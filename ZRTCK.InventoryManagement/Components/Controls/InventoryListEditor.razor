@@ -1,0 +1,41 @@
+@using ZRTCK.InventoryManagement.Persistence
+<MudItem xs="12">
+    <MudText Typo="Typo.h6" Class="mt-4">Інвентарні одиниці</MudText>
+</MudItem>
+
+@foreach (var item in Items)
+{
+    <MudItem xs="12">
+        <InventoryItemEditor Item="item" IsDisabled="@(IsItemDisabled(item))" OnRemoved="RemoveItem"/>
+    </MudItem>
+}
+
+<MudItem xs="12">
+    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Color="Color.Primary"
+               OnClick="AddItem">
+        Додати одиницю
+    </MudButton>
+</MudItem>
+
+@code {
+    [Parameter] public List<InventoryItem> Items { get; set; } = new();
+    [Parameter] public EventCallback<InventoryItem> OnItemRemoved { get; set; }
+    [Parameter] public EventCallback OnItemAdded { get; set; }
+    [Parameter] public Func<InventoryItem, bool>? IsDisabledFunc { get; set; }
+
+    private void AddItem()
+    {
+        OnItemAdded.InvokeAsync();
+    }
+
+    private void RemoveItem(InventoryItem item)
+    {
+        OnItemRemoved.InvokeAsync(item);
+    }
+
+    private bool IsItemDisabled(InventoryItem item)
+    {
+        return IsDisabledFunc?.Invoke(item) ?? false;
+    }
+
+}

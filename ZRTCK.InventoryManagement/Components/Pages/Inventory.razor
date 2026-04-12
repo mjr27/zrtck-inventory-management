@@ -1,0 +1,182 @@
+@page "/"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+@rendermode InteractiveAuto
+
+<PageTitle>Майно</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems"/>
+
+<MudPaper class="mb-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Додати накладну</MudText>
+
+    <MudElement Class="d-flex">
+        <div class="flex-grow-1">
+            <MudTextField placeholder="Search by ID, Name, or Factory ID..."
+
+                          @bind-Value="_searchTerm"/>
+        </div>
+        <MudSpacer/>
+        <div class="flex-grow-0">
+            <MudSelect T="int?" @bind-Value="_selectedPersonId" Class="flex-grow-0" Label="Користувач"
+                       Style="min-width: 200px;">
+                <MudSelectItem T="int?" Value="@(null)">Всі</MudSelectItem>
+                <MudSelectItem T="int?" Value="@(-1)">Не призначені</MudSelectItem>
+                @foreach (var person in _personsWithAssignments)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)person.Id)">
+                        <MudText
+                            Color="@(person.IsObsolete ? Color.Error : Color.Default)">@($"{person.LastName} {person.FirstName}")</MudText>
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div class="flex-grow-0">
+            <MudSelect @bind-Value="_selectedCategoryId" Class="flex-grow-0" Label="Категорія"
+                       Style="min-width: 200px;">
+                <MudSelectItem Value="@("")">Всі</MudSelectItem>
+                <MudSelectItem Value="@("-")">Невідомі</MudSelectItem>
+                @foreach (var category in _categories)
+                {
+                    <MudSelectItem Value="@category.Id">@category.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+    </MudElement>
+</MudPaper>
+
+@if (_inventoryItems == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (_inventoryItems.Count == 0)
+{
+    <p>No inventory items found.</p>
+}
+else
+{
+    var filteredItems = _inventoryItems.Where(item =>
+    {
+        // Search term filter
+        var matchesSearch = string.IsNullOrWhiteSpace(_searchTerm) ||
+                            item.Id.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                            item.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                            (item.FactoryId != null && item.FactoryId.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase));
+
+        // Category filter
+        var matchesCategory = string.IsNullOrWhiteSpace(_selectedCategoryId)
+                                 || (_selectedCategoryId == "-"
+                                     ? item.CategoryId is null
+                                     : item.CategoryId == _selectedCategoryId);
+
+        // Person filter
+        bool matchesPerson;
+        if (_selectedPersonId == null)
+        {
+            matchesPerson = true;
+        }
+        else if (_selectedPersonId == -1)
+        {
+            matchesPerson = !_currentAssignments.ContainsKey(item.Id);
+        }
+        else
+        {
+            matchesPerson = _currentAssignments.TryGetValue(item.Id, out var info) && info.personId == _selectedPersonId;
+        }
+
+        return matchesSearch && matchesCategory && matchesPerson;
+    }).ToList();
+
+    <MudDataGrid Items="filteredItems.AsQueryable()"
+                 Class="table table-striped table-hover"
+                 RowStyleFunc="@((item, _) => _currentAssignments.TryGetValue(item.Id, out var info) && info.isObsolete ? "background-color: var(--mud-palette-error-lighten);" : "")">
+        <Columns>
+            <PropertyColumn Property="x => x.Id" Title="ID" Sortable="true"/>
+            <PropertyColumn Property="x => x.Name" Title="Name" Sortable="true"/>
+            <PropertyColumn Title="Категорія" Property="x => x.CategoryId" Sortable="true">
+                <CellTemplate>
+                    @(context.Item.Category?.Name ?? "-")
+                </CellTemplate>
+            </PropertyColumn>
+
+            <TemplateColumn Title="Factory ID">
+                <CellTemplate>@(context.Item.FactoryId ?? "-")</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Invoice">
+                <CellTemplate>
+                    @context.Item.InventoryInvoice.InvoiceId від @context.Item.InventoryInvoice.InvoiceDate
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Поточний користувач">
+                <CellTemplate>
+                    @(_currentAssignments.TryGetValue(context.Item.Id, out var info) ? info.personName : "—")
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Деталі закріплення">
+                <CellTemplate>
+                    @(_currentAssignments.TryGetValue(context.Item.Id, out var info) ? info.assignmentDetails : "—")
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+
+@code {
+    private List<InventoryItem>? _inventoryItems;
+    private string _searchTerm = "";
+    private string _selectedCategoryId = "";
+    private List<InventoryCategory> _categories = new();
+    private int? _selectedPersonId;
+    private List<Person> _personsWithAssignments = new();
+    private Dictionary<string, (string personName, string assignmentDetails, bool isObsolete, int personId)> _currentAssignments = new();
+
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home, disabled: true)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _inventoryItems = await context.Inventory
+            .Include(it => it.InventoryInvoice)
+            .Include(it => it.Category)
+            .ToListAsync();
+
+        _categories = await context.Categories.OrderBy(c => c.Name).ToListAsync();
+
+        var assignmentRows = await context.Assignments
+            .SelectMany(a => a.AssignmentRows)
+            .Include(r => r.InventoryAssignment)
+            .Include(r => r.Person)
+            .Where(r => r.InventoryAssignment.OrderDate != null && r.InventoryAssignment.OrderId != null)
+            .OrderByDescending(r => r.InventoryAssignment.OrderDate)
+            .ToListAsync();
+
+        _currentAssignments = assignmentRows
+            .GroupBy(r => r.InventoryItemId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var lastAssignment = g.First();
+                    var personName = $"{lastAssignment.Person.LastName} {lastAssignment.Person.FirstName}";
+                    var details = $"наказ № {lastAssignment.InventoryAssignment.OrderId} від {lastAssignment.InventoryAssignment.OrderDate:d}";
+                    var isObsolete = lastAssignment.Person.IsObsolete;
+                    var personId = lastAssignment.Person.Id;
+                    return (personName, details, isObsolete, personId);
+                }
+            );
+
+        _personsWithAssignments = assignmentRows
+            .Select(r => r.Person)
+            .GroupBy(p => p.Id)
+            .Select(g => g.First())
+            .OrderBy(p => p.LastName)
+            .ThenBy(p => p.FirstName)
+            .ToList();
+    }
+
+}
+

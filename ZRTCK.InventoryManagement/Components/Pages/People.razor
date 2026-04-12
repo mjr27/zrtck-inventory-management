@@ -1,0 +1,226 @@
+@page "/people"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@rendermode InteractiveAuto
+
+<PageTitle>Особовий склад</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems"/>
+
+<div class="d-flex">
+    <MudText Typo="Typo.h4" GutterBottom="true">Особовий склад</MudText>
+    <MudSpacer/>
+    <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+            OnClick="@(HandleAddPerson)" Class="mb-4">
+        Додати особу
+    </MudFab>
+</div>
+
+<MudTable Items="@_people" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading"
+          LoadingProgressColor="Color.Info">
+    <ToolBarContent>
+        <MudText Typo="Typo.h6">Список осіб</MudText>
+        <MudSpacer/>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>Звання</MudTh>
+        <MudTh>Посада</MudTh>
+        <MudTh>Ім'я</MudTh>
+        <MudTh>Прізвище</MudTh>
+        <MudTh>Статус</MudTh>
+        <MudTh>Дії</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Звання">@context.Rank</MudTd>
+        <MudTd DataLabel="Посада">@context.Position</MudTd>
+        <MudTd DataLabel="Ім'я">@context.FirstName</MudTd>
+        <MudTd DataLabel="Прізвище">@context.LastName</MudTd>
+        <MudTd DataLabel="Статус">
+            @if (context.IsObsolete)
+            {
+                <MudChip T="string" Color="Color.Error" Size="Size.Small">Застарілий</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Success" Size="Size.Small">Активний</MudChip>
+            }
+        </MudTd>
+        <MudTd DataLabel="Дії">
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                           OnClick="@(() => EditPerson(context))"/>
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                           Disabled="@(_hasAssignments.GetValueOrDefault(context.Id))"
+                           Title="@(_hasAssignments.GetValueOrDefault(context.Id) ? "Неможливо видалити: особа має записи у відомостях" : "Видалити")"
+                           OnClick="@(() => DeletePerson(context))"/>
+        </MudTd>
+    </RowTemplate>
+    <PagerContent>
+        <MudTablePager/>
+    </PagerContent>
+</MudTable>
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_editingPersonId == 0 ? "Додати особу" : "Редагувати особу")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudTextField T="string" Label="Посада" @bind-Value="_model.Position" Required="true"
+                          RequiredError="Посада обов'язкова" Disabled="@_isPositionRestricted"/>
+            <MudTextField T="string" Label="Звання" @bind-Value="_model.Rank" Required="true"
+                          RequiredError="Звання обов'язкове"/>
+            <MudTextField T="string" Label="Ім'я" @bind-Value="_model.FirstName" Required="true"
+                          RequiredError="Ім'я обов'язкове" Disabled="@_isPositionRestricted"/>
+            <MudTextField T="string" Label="Прізвище" @bind-Value="_model.LastName" Required="true"
+                          RequiredError="Прізвище обов'язкове" Disabled="@_isPositionRestricted"/>
+            <MudCheckBox @bind-Value="_model.IsObsolete" Label="Застаріла особа (архівна)"/>
+        </MudForm>
+        @if (_isPositionRestricted)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-2">Ця особа має записи у відомостях закріплення, тому можна
+                редагувати тільки звання.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="Cancel" Class="px-10">Скасувати</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePerson" Class="px-10">Зберегти
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Особовий склад", href: null, disabled: true)
+    ];
+
+    private List<Person> _people = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private bool _formIsValid;
+    private MudForm _form = null!;
+    private int _editingPersonId;
+    private Person _model = new() { Rank = "", Position = "", FirstName = "", LastName = "", IsObsolete = false };
+    private bool _isPositionRestricted;
+
+    private Dictionary<int, bool> _hasAssignments = new();
+
+    private readonly DialogOptions _dialogOptions = new() { FullWidth = true, MaxWidth = MaxWidth.Small };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPeople();
+    }
+
+    private async Task LoadPeople()
+    {
+        _loading = true;
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _people = await context.People.OrderBy(p => p.LastName).ToListAsync();
+
+        var peopleIds = _people.Select(p => p.Id).ToList();
+        _hasAssignments = await context.Set<InventoryAssignmentRow>()
+            .Where(r => peopleIds.Contains(r.PersonId))
+            .Select(r => r.PersonId)
+            .Distinct()
+            .ToDictionaryAsync(id => id, _ => true);
+
+        _loading = false;
+    }
+
+    private void HandleAddPerson()
+    {
+        _editingPersonId = 0;
+        _model = new() { Rank = "", Position = "", FirstName = "", LastName = "", IsObsolete = false };
+        _isPositionRestricted = false;
+        _dialogVisible = true;
+    }
+
+    private async Task EditPerson(Person person)
+    {
+        _editingPersonId = person.Id;
+        _model = new() { Id = person.Id, Rank = person.Rank, Position = person.Position, FirstName = person.FirstName, LastName = person.LastName, IsObsolete = person.IsObsolete };
+
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _isPositionRestricted = await context.Set<InventoryAssignmentRow>().AnyAsync(r => r.PersonId == person.Id);
+
+        _dialogVisible = true;
+    }
+
+    private async Task SavePerson()
+    {
+        await _form.ValidateAsync();
+        if (!_formIsValid) return;
+
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+
+        if (_editingPersonId == 0)
+        {
+            context.People.Add(_model);
+            Snackbar.Add("Особу додано", Severity.Success);
+        }
+        else
+        {
+            var person = await context.People.FindAsync(_editingPersonId);
+            if (person == null) return;
+
+            if (_isPositionRestricted)
+            {
+                // Only Rank and IsObsolete can be edited
+                person.Rank = _model.Rank;
+                person.IsObsolete = _model.IsObsolete;
+            }
+            else
+            {
+                person.Rank = _model.Rank;
+                person.Position = _model.Position;
+                person.FirstName = _model.FirstName;
+                person.LastName = _model.LastName;
+                person.IsObsolete = _model.IsObsolete;
+            }
+
+            context.People.Update(person);
+            Snackbar.Add("Особу оновлено", Severity.Success);
+        }
+
+        await context.SaveChangesAsync();
+        _dialogVisible = false;
+        await LoadPeople();
+    }
+
+    private async Task DeletePerson(Person person)
+    {
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Видалення особи",
+            $"Ви впевнені, що хочете видалити особу {person.LastName} {person.FirstName}?",
+            yesText: "Видалити", cancelText: "Скасувати");
+
+        if (result != true) return;
+
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        bool hasAssignments = await context.Set<InventoryAssignmentRow>().AnyAsync(r => r.PersonId == person.Id);
+
+        if (hasAssignments)
+        {
+            Snackbar.Add("Неможливо видалити особу, яка має записи у відомостях закріплення", Severity.Error);
+            return;
+        }
+
+        context.People.Remove(person);
+        await context.SaveChangesAsync();
+        Snackbar.Add("Особу видалено", Severity.Success);
+        await LoadPeople();
+    }
+
+    private void Cancel()
+    {
+        _dialogVisible = false;
+    }
+
+}

@@ -1,0 +1,88 @@
+@page "/assignments/create"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Створити наказ на закріплення</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbItems"/>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h4" GutterBottom="true">Створити наказ</MudText>
+    <MudForm Model="@_model">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_model.OrderId" Label="Номер наказу" HideSpinButtons="true"/>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="OrderDateWrapper" Label="Дата наказу" Editable="true"
+                               Placeholder="Оберіть дату"/>
+            </MudItem>
+        </MudGrid>
+    </MudForm>
+
+    <AssignmentRowsEditor @bind-SelectedPeople="_selectedPeople"/>
+
+    <div class="d-flex justify-end mt-4">
+        <MudButton OnClick="@(HandleCancel)" Class="mr-2">Скасувати</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(HandleSubmit)">Зберегти</MudButton>
+    </div>
+</MudPaper>
+
+@code {
+    private readonly InventoryAssignment _model = new();
+    private Dictionary<string, int?> _selectedPeople = new();
+
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Накази", href: "/assignments"),
+        new("Створити", href: null, disabled: true)
+    ];
+
+    private DateTime? OrderDateWrapper
+    {
+        get => _model.OrderDate?.ToDateTime(TimeOnly.MinValue);
+        set => _model.OrderDate = value.HasValue ? DateOnly.FromDateTime(value.Value) : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+    }
+
+    private async Task HandleSubmit()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var assignment = new InventoryAssignment
+        {
+            OrderId = _model.OrderId,
+            OrderDate = _model.OrderDate
+        };
+
+        foreach (var kvp in _selectedPeople)
+        {
+            if (kvp.Value.HasValue)
+            {
+                assignment.AssignmentRows.Add(new()
+                {
+                    InventoryAssignmentId = 0, // Will be set by EF
+                    InventoryItemId = kvp.Key,
+                    PersonId = kvp.Value.Value,
+                    InventoryAssignment = assignment
+                });
+            }
+        }
+
+        context.Assignments.Add(assignment);
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("Наказ успішно створено", Severity.Success);
+        NavigationManager.NavigateTo("/assignments");
+    }
+
+    private void HandleCancel() => NavigationManager.NavigateTo("/assignments");
+}

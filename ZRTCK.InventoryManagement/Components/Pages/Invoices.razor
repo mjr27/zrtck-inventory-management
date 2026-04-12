@@ -1,0 +1,79 @@
+@page "/invoices"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+@rendermode InteractiveAuto
+
+<PageTitle>Накладні</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <MudText Typo="Typo.h4" GutterBottom="true">Накладні</MudText>
+        <MudSpacer/>
+        <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   Href="/invoices/add" Class="mb-4">
+            Додати накладну
+        </MudFab>
+    </div>
+
+    @if (_invoices == null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else if (_invoices.Count == 0)
+    {
+        <p>No invoices found.</p>
+    }
+    else
+    {
+        <MudDataGrid Items="_invoices.AsQueryable()" 
+                     Class="table table-striped table-hover">
+            <Columns>
+            <PropertyColumn Property="x => x.InvoiceId" Title="Number" Sortable="true"/>
+            <PropertyColumn Property="x => x.InvoiceDate" Title="Date" Sortable="true" />
+            <TemplateColumn Title="Inventory Items">
+                <CellTemplate>
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var item in context.Item.InventoryItems)
+                        {
+                            <li>
+                                <small>
+                                    <strong>@item.Id</strong>: @item.Name
+                                </small>
+                            </li>
+                        }
+                    </ul>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn>
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" href="@($"/invoices/edit/{context.Item.Id}")" Color="Color.Primary" />
+                </CellTemplate>
+            </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+
+        @* <Paginator State="@_pagination"/> *@
+    }
+</div>
+
+@code {
+    private List<InventoryInvoice>? _invoices;
+    // private readonly PaginationState _pagination = new PaginationState { ItemsPerPage = 20 };
+
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Накладні", href: null, disabled: true)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _invoices = await context.Invoices
+            .Include(i => i.InventoryItems)
+            .ToListAsync();
+    }
+
+}

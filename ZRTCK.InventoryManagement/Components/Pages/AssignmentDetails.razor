@@ -1,0 +1,79 @@
+@page "/assignments/{AssignmentId:int}"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+
+<PageTitle>Наказ на закріплення майна</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems"/>
+
+<MudPaper Class="pa-4 mt-2">
+    @if (_assignment == null)
+    {
+        <MudProgressCircular Indeterminate="true"/>
+    }
+    else
+    {
+        <div class="d-flex align-center mb-4">
+            <MudText Typo="Typo.h4">
+                Деталі наказу
+                @if (_assignment.OrderId.HasValue)
+                {
+                    @($" №{_assignment.OrderId}")
+                }
+                @if (_assignment.OrderDate.HasValue)
+                {
+                    @($" від {_assignment.OrderDate.Value:d}")
+                }
+            </MudText>
+        </div>
+
+        <MudTable Items="@_assignment.AssignmentRows" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+                  GroupBy="@_groupDefinition">
+            <HeaderContent>
+                <MudTh>Майно (ID)</MudTh>
+                <MudTh>Назва майна</MudTh>
+            </HeaderContent>
+            <GroupHeaderTemplate>
+                <MudTh Class="mud-theme-primary" colspan="2">
+                    @($"{context.GroupName}\u003a\u0020{context.Items.First().Person.LastName}\u0020{context.Items.First().Person.FirstName}\u0020\u0028{context.Items.First().Person.Rank}\u0029")
+                </MudTh>
+            </GroupHeaderTemplate>
+            <RowTemplate>
+                <MudTd DataLabel="Майно (ID)">@context.InventoryItemId</MudTd>
+                <MudTd DataLabel="Назва майна">@context.InventoryItem.Name</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public int AssignmentId { get; set; }
+
+    private InventoryAssignment? _assignment;
+    private readonly List<BreadcrumbItem> _breadcrumbItems =    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Накази", href: "/assignments"),
+        new("Деталі наказу", href: null, disabled: true)
+    ];
+
+    private readonly TableGroupDefinition<InventoryAssignmentRow> _groupDefinition = new()
+    {
+        GroupName = "Особа",
+        Indentation = false,
+        Expandable = true,
+        IsInitiallyExpanded = true,
+        Selector = (e) => e.PersonId
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _assignment = await context.Assignments
+            .Include(a => a.AssignmentRows)
+            .ThenInclude(r => r.Person)
+            .Include(a => a.AssignmentRows)
+            .ThenInclude(r => r.InventoryItem)
+            .FirstOrDefaultAsync(a => a.Id == AssignmentId);
+    }
+
+}

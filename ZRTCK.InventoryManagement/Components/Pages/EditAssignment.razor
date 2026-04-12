@@ -1,0 +1,150 @@
+@page "/assignments/edit/{AssignmentId:int}"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Редагування наказа на закріплення</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems"/>
+
+
+<MudPaper Class="pa-4 mt-2">
+
+    <MudText Typo="Typo.h4" GutterBottom="true">Редагувати наказ</MudText>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true"/>
+    }
+    else if (_assignment == null)
+    {
+        <MudAlert Severity="Severity.Error">Наказ не знайдено</MudAlert>
+    }
+    else
+    {
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_assignment.OrderId" Label="Номер наказу" HideSpinButtons="true"/>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="OrderDateWrapper" Label="Дата наказу" Editable="true"
+                                   Placeholder="Оберіть дату"/>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+
+        <MudDivider Class="my-4"/>
+
+        @if (!CanEditRows)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-2">Редагування закріплень дозволено лише якщо номер та
+                дата наказу порожні.
+            </MudAlert>
+        }
+
+        <AssignmentRowsEditor @bind-SelectedPeople="_selectedPeople" Disabled="@(!CanEditRows)"/>
+
+        <div class="d-flex justify-end mt-4">
+            <MudButton OnClick="Cancel" Class="mr-2">Скасувати</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Зберегти</MudButton>
+        </div>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public int AssignmentId { get; set; }
+
+    private InventoryAssignment? _assignment;
+    private bool _loading = true;
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private Dictionary<string, int?> _selectedPeople = new();
+
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Накази", href: "/assignments"),
+        new("Редагувати", href: null, disabled: true)
+    ];
+
+    private bool CanEditRows => !_assignment?.OrderId.HasValue == true && !_assignment?.OrderDate.HasValue == true;
+
+    private DateTime? OrderDateWrapper
+    {
+        get => _assignment?.OrderDate?.ToDateTime(TimeOnly.MinValue);
+        set
+        {
+            if (_assignment != null)
+                _assignment.OrderDate = value.HasValue ? DateOnly.FromDateTime(value.Value) : null;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAssignment();
+    }
+
+    private async Task LoadAssignment()
+    {
+        _loading = true;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _assignment = await context.Assignments
+            .Include(a => a.AssignmentRows)
+            .FirstOrDefaultAsync(a => a.Id == AssignmentId);
+
+        if (_assignment != null)
+        {
+            _selectedPeople = _assignment.AssignmentRows.ToDictionary(r => r.InventoryItemId, r => (int?)r.PersonId);
+        }
+
+        _loading = false;
+    }
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+        if (!_formIsValid) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var assignment = await context.Assignments
+            .Include(a => a.AssignmentRows)
+            .FirstOrDefaultAsync(a => a.Id == AssignmentId);
+
+        if (assignment == null) return;
+
+        assignment.OrderId = _assignment!.OrderId;
+        assignment.OrderDate = _assignment.OrderDate;
+
+        if (CanEditRows)
+        {
+            // Remove existing rows
+            context.Set<InventoryAssignmentRow>().RemoveRange(assignment.AssignmentRows);
+            assignment.AssignmentRows.Clear();
+
+            // Add new rows
+            foreach (var kvp in _selectedPeople)
+            {
+                if (kvp.Value.HasValue)
+                {
+                    assignment.AssignmentRows.Add(new()
+                    {
+                        InventoryAssignmentId = assignment.Id,
+                        InventoryItemId = kvp.Key,
+                        PersonId = kvp.Value.Value,
+                        InventoryAssignment = assignment
+                    });
+                }
+            }
+        }
+
+        context.Assignments.Update(assignment);
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("Наказ оновлено", Severity.Success);
+        NavigationManager.NavigateTo("/assignments");
+    }
+
+    private void Cancel() => NavigationManager.NavigateTo("/assignments");
+}

@@ -1,0 +1,8 @@
+bin/
+obj/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+/*.csv
+ZRTCK.InventoryManagement/*.db*
+ZRTCK.InventoryManagement/appsettings.*.json

@@ -1,0 +1,111 @@
+@page "/assignments"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+@rendermode InteractiveAuto
+
+<PageTitle>Накази на закріплення</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems" />
+<div class="d-flex">
+    <MudText Typo="Typo.h4" GutterBottom="true">Закріплення майна (Накази)</MudText>
+    <MudSpacer/>
+    <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="@(HandleNavigateToCreate)" Class="mb-4">
+        Створити наказ
+    </MudFab>
+</div>
+
+<MudTable Items="@_assignments" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading"
+          OnRowClick="@(args => HandleShowDetails(args.Item!))" T="InventoryAssignment">
+    <HeaderContent>
+        <MudTh>
+            <MudTableSortLabel SortBy="new Func<InventoryAssignment, object>(x => x.OrderId ?? 0)">Номер наказу
+            </MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel SortBy="new Func<InventoryAssignment, object>(x => x.OrderDate ?? DateOnly.MinValue)">
+                Дата наказу
+            </MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel SortBy="new Func<InventoryAssignment, object>(x => x.AssignmentRows.Count)">Кількість
+                записів
+            </MudTableSortLabel>
+        </MudTh>
+        <MudTh>Дії</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Номер наказу">@context.OrderId</MudTd>
+        <MudTd DataLabel="Дата наказу">@context.OrderDate</MudTd>
+        <MudTd DataLabel="Кількість записів">@context.AssignmentRows.Count</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                           OnClick="@(() => HandleEditAssignment(context))"/>
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                           OnClick="@(() => HandleDeleteAssignment(context))"/>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Накази", href: null, disabled: true)
+    ];
+
+    private List<InventoryAssignment> _assignments = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAssignments();
+    }
+
+    private async Task LoadAssignments()
+    {
+        _loading = true;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _assignments = await context.Assignments
+            .Include(a => a.AssignmentRows)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void HandleNavigateToCreate()
+    {
+        NavigationManager.NavigateTo("/assignments/create");
+    }
+
+    private void HandleEditAssignment(InventoryAssignment assignment)
+    {
+        NavigationManager.NavigateTo($"/assignments/edit/{assignment.Id}");
+    }
+
+    private void HandleShowDetails(InventoryAssignment assignment)
+    {
+        NavigationManager.NavigateTo($"/assignments/{assignment.Id}");
+    }
+
+    private async Task HandleDeleteAssignment(InventoryAssignment assignment)
+    {
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Підтвердження видалення",
+            $"Ви впевнені, що хочете видалити наказ №{assignment.OrderId}?",
+            yesText: "Видалити", cancelText: "Скасувати");
+
+        if (result == true)
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            context.Assignments.Remove(assignment);
+            await context.SaveChangesAsync();
+            await LoadAssignments();
+            Snackbar.Add("Наказ видалено", Severity.Info);
+        }
+    }
+
+}

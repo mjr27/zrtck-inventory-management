@@ -1,0 +1,214 @@
+@page "/invoices/edit/{Id:int}"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Редагувати накладну</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<MudContainer MaxWidth="MaxWidth.Medium">
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Редагувати накладну</MudText>
+
+        @if (_invoice == null)
+        {
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true"/>
+        }
+        else
+        {
+            <EditForm Model="@_invoice" OnValidSubmit="HandleValidSubmit">
+                <DataAnnotationsValidator/>
+
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_invoice.InvoiceId"
+                                         Label="Номер накладної"
+                                         Required="true"
+                                         For="@(() => _invoice.InvoiceId)"/>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker Label="Дата накладної"
+                                       @bind-Date="_invoiceDate"
+                                       Required="true"/>
+                    </MudItem>
+
+                    <InventoryListEditor Items="_items"
+                                         OnItemAdded="AddItem"
+                                         OnItemRemoved="RemoveItem"
+                                         IsDisabledFunc="@(item => !string.IsNullOrEmpty(item.OriginalId))"/>
+
+                    <MudItem xs="12" Class="d-flex justify-end mt-4">
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">
+                            Зберегти зміни
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+            </EditForm>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Накладні", href: "/invoices"),
+        new("Редагувати", href: null, disabled: true)
+    ];
+
+    private InventoryInvoice? _invoice;
+    private DateTime? _invoiceDate;
+    private List<InventoryItem> _items = [];
+    private readonly List<string> _removedItemIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoice();
+    }
+
+    private async Task LoadInvoice()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _invoice = await context.Invoices
+            .Include(i => i.InventoryItems)
+            .FirstOrDefaultAsync(i => i.Id == Id);
+
+        if (_invoice == null)
+        {
+            Snackbar.Add("Накладну не знайдено", Severity.Error);
+            NavigationManager.NavigateTo("/invoices");
+            return;
+        }
+
+        _invoiceDate = _invoice.InvoiceDate.ToDateTime(TimeOnly.MinValue);
+        _items = _invoice.InventoryItems.Select(i => new InventoryItem
+        {
+            OriginalId = i.Id,
+            Id = i.Id,
+            Name = i.Name,
+            ProductCode = i.ProductCode,
+            Year = i.Year,
+            Price = i.Price,
+            CategoryId = i.CategoryId,
+            FactoryId = i.FactoryId
+        }).ToList();
+    }
+
+    private void AddItem()
+    {
+        _items.Add(new()
+        {
+            Id = "",
+            Name = "",
+            ProductCode = "",
+            Year = DateTime.Today.Year,
+            Price = 0,
+            InventoryInvoice = _invoice!
+        });
+    }
+
+    private void RemoveItem(InventoryItem item)
+    {
+        if (!string.IsNullOrEmpty(item.OriginalId))
+        {
+            _removedItemIds.Add(item.OriginalId);
+        }
+
+        _items.Remove(item);
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (_invoice == null || !_invoiceDate.HasValue) return;
+
+        // Validate items
+        if (_items.Any(i => string.IsNullOrWhiteSpace(i.Id) || string.IsNullOrWhiteSpace(i.Name)))
+        {
+            Snackbar.Add("Будь ласка, заповніть інвентарний номер та назву для всіх одиниць", Severity.Error);
+            return;
+        }
+
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+
+        // Load the invoice again to ensure it's tracked by this context
+        var dbInvoice = await context.Invoices
+            .Include(i => i.InventoryItems)
+            .FirstOrDefaultAsync(i => i.Id == Id);
+
+        if (dbInvoice == null)
+        {
+            Snackbar.Add("Помилка: накладну видалено іншим користувачем", Severity.Error);
+            return;
+        }
+
+        // Check if any NEW item ID already exists (excluding the ones already in this invoice)
+        var newItemIds = _items.Where(i => string.IsNullOrEmpty(i.OriginalId)).Select(i => i.Id).ToList();
+        if (newItemIds.Any())
+        {
+            var alreadyExists = await context.Inventory.AnyAsync(i => newItemIds.Contains(i.Id));
+            if (alreadyExists)
+            {
+                Snackbar.Add("Один або декілька нових інвентарних номерів вже існують в базі", Severity.Error);
+                return;
+            }
+        }
+
+        // Update invoice properties
+        dbInvoice.InvoiceId = _invoice.InvoiceId;
+        dbInvoice.InvoiceDate = DateOnly.FromDateTime(_invoiceDate.Value);
+
+        // Remove items
+        foreach (var id in _removedItemIds)
+        {
+            var itemToRemove = dbInvoice.InventoryItems.FirstOrDefault(i => i.Id == id);
+            if (itemToRemove != null)
+            {
+                dbInvoice.InventoryItems.Remove(itemToRemove);
+                context.Inventory.Remove(itemToRemove);
+            }
+        }
+
+        // Update existing items and add new ones
+        foreach (var model in _items)
+        {
+            if (!string.IsNullOrEmpty(model.OriginalId))
+            {
+                var existingItem = dbInvoice.InventoryItems.FirstOrDefault(i => i.Id == model.OriginalId);
+                if (existingItem != null)
+                {
+                    existingItem.Name = model.Name;
+                    existingItem.ProductCode = model.ProductCode;
+                    existingItem.Year = model.Year;
+                    existingItem.Price = model.Price;
+                    existingItem.CategoryId = model.CategoryId;
+                    existingItem.FactoryId = model.FactoryId;
+                }
+            }
+            else
+            {
+                dbInvoice.InventoryItems.Add(new()
+                {
+                    Id = model.Id,
+                    Name = model.Name,
+                    ProductCode = model.ProductCode,
+                    Year = model.Year,
+                    Price = model.Price,
+                    CategoryId = model.CategoryId,
+                    FactoryId = model.FactoryId,
+                    InventoryInvoice = dbInvoice
+                });
+            }
+        }
+
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("Зміни збережено успішно", Severity.Success);
+        NavigationManager.NavigateTo("/invoices");
+    }
+
+}

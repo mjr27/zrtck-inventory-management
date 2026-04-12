@@ -1,0 +1,131 @@
+@page "/invoices/add"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Додати накладну</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems" />
+
+<MudPaper Class="pa-4 mt-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Додати накладну</MudText>
+
+    <EditForm Model="@_invoice" OnValidSubmit="HandleValidSubmit">
+        <DataAnnotationsValidator/>
+
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_invoice.InvoiceId"
+                                 Label="Номер накладної"
+                                 Required="true"
+                                 For="@(() => _invoice.InvoiceId)"/>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Label="Дата накладної"
+                               @bind-Date="_invoiceDate"
+                               Required="true"/>
+            </MudItem>
+
+            <InventoryListEditor Items="Items" OnItemAdded="AddItem" OnItemRemoved="RemoveItem"/>
+
+            <MudItem xs="12" Class="d-flex justify-end mt-4">
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">
+                    Зберегти накладну
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </EditForm>
+</MudPaper>
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Накладні", href: "/invoices"),
+        new("Додати", href: null, disabled: true)
+    ];
+
+    private readonly InventoryInvoice _invoice = new() { InvoiceId = 0, InvoiceDate = DateOnly.FromDateTime(DateTime.Today) };
+    private DateTime? _invoiceDate = DateTime.Today;
+    public List<InventoryItem> Items = new();
+
+    protected override void OnInitialized()
+    {
+        AddItem(); // Add initial item
+    }
+
+    private void AddItem()
+    {
+        Items.Add(new()
+        {
+            Id = "",
+            Name = "",
+            ProductCode = "",
+            Year = DateTime.Today.Year,
+            Price = 0,
+            InventoryInvoice = _invoice
+        });
+    }
+
+    private void RemoveItem(InventoryItem item)
+    {
+        if (Items.Count > 1)
+        {
+            Items.Remove(item);
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (_invoiceDate.HasValue)
+        {
+            // Validate items
+            if (Items.Any(i => string.IsNullOrWhiteSpace(i.Id) || string.IsNullOrWhiteSpace(i.Name)))
+            {
+                Snackbar.Add("Будь ласка, заповніть інвентарний номер та назву для всіх одиниць", Severity.Error);
+                return;
+            }
+
+            await using var context = await DbContextFactory.CreateDbContextAsync();
+
+            // Check if any item ID already exists
+            var existingIds = Items.Select(i => i.Id).ToList();
+            var alreadyExists = await context.Inventory.AnyAsync(i => existingIds.Contains(i.Id));
+            if (alreadyExists)
+            {
+                Snackbar.Add("Один або декілька інвентарних номерів вже існують в базі", Severity.Error);
+                return;
+            }
+
+            var invoiceToSave = new InventoryInvoice
+            {
+                InvoiceId = _invoice.InvoiceId,
+                InvoiceDate = DateOnly.FromDateTime(_invoiceDate.Value),
+            };
+
+            foreach (var item in Items)
+            {
+                invoiceToSave.InventoryItems.Add(new()
+                {
+                    Id = item.Id,
+                    Name = item.Name,
+                    ProductCode = item.ProductCode,
+                    Year = item.Year,
+                    Price = item.Price,
+                    CategoryId = item.CategoryId,
+                    FactoryId = item.FactoryId,
+                    InventoryInvoice = invoiceToSave
+                });
+            }
+
+            context.Invoices.Add(invoiceToSave);
+            await context.SaveChangesAsync();
+
+            Snackbar.Add("Накладну збережено успішно", Severity.Success);
+            NavigationManager.NavigateTo("/invoices");
+        }
+    }
+
+}

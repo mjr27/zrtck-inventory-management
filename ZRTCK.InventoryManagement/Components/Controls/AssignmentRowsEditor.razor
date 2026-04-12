@@ -1,0 +1,79 @@
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+
+<MudTable Items="@_inventoryItems" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Class="mt-4">
+    <HeaderContent>
+        <MudTh>Майно (ID)</MudTh>
+        <MudTh>Назва</MudTh>
+        <MudTh>Поточний користувач</MudTh>
+        <MudTh>Закріпити за особою</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Майно (ID)">@context.Id</MudTd>
+        <MudTd DataLabel="Назва">@context.Name</MudTd>
+        <MudTd DataLabel="Поточний користувач">@GetPersonName(context.Id)</MudTd>
+        <MudTd DataLabel="Закріпити за особою">
+            <MudSelect T="int?" Value="@GetSelectedPersonId(context.Id)" ValueChanged="@(val => OnPersonSelected(context.Id, val))" Label="Оберіть особу" Clearable="true" Disabled="@Disabled">
+                @foreach (var person in _people)
+                {
+                    <MudSelectItem T="int?" Value="@person.Id">@($"{person.LastName} {person.FirstName}")</MudSelectItem>
+                }
+            </MudSelect>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    [Parameter] public Dictionary<string, int?> SelectedPeople { get; set; } = new();
+    [Parameter] public EventCallback<Dictionary<string, int?>> SelectedPeopleChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private List<InventoryItem> _inventoryItems = new();
+    private List<Person> _people = new();
+    private Dictionary<string, string> _currentAssignments = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _inventoryItems = await context.Inventory.ToListAsync();
+        _people = await context.People.Where(p => !p.IsObsolete).ToListAsync();
+
+        var assignmentRows = await context.Assignments
+            .SelectMany(a => a.AssignmentRows)
+            .Include(r => r.InventoryAssignment)
+            .Include(r => r.Person)
+            .Where(r => r.InventoryAssignment.OrderDate != null)
+            .OrderByDescending(r => r.InventoryAssignment.OrderDate)
+            .ToListAsync();
+
+        _currentAssignments = assignmentRows
+            .GroupBy(r => r.InventoryItemId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.First().Person.LastName + " " + g.First().Person.FirstName
+            );
+
+        // Ensure all inventory items are in the dictionary
+        foreach (var item in _inventoryItems)
+        {
+            SelectedPeople.TryAdd(item.Id, null);
+        }
+    }
+
+    private string GetPersonName(string inventoryItemId)
+    {
+        return _currentAssignments.TryGetValue(inventoryItemId, out var personName) ? personName : "—";
+    }
+
+    private int? GetSelectedPersonId(string inventoryItemId)
+    {
+        return SelectedPeople.TryGetValue(inventoryItemId, out var personId) ? personId : null;
+    }
+
+    private async Task OnPersonSelected(string inventoryItemId, int? personId)
+    {
+        SelectedPeople[inventoryItemId] = personId;
+        await SelectedPeopleChanged.InvokeAsync(SelectedPeople);
+    }
+}

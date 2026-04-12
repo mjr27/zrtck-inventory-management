@@ -1,0 +1,55 @@
+@using ZRTCK.InventoryManagement.Persistence
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+<MudCard Elevation="1" Class="pa-2 mb-2">
+    <MudCardContent>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="Item.Id" Label="Інвентарний номер (UUID/код)" Required="true"
+                              Disabled="@(IsDisabled)"/>
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="Item.Name" Label="Назва" Required="true"/>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="Item.ProductCode" Label="Код продукту" Required="true"/>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudNumericField @bind-Value="Item.Year" Label="Рік" Required="true"/>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField @bind-Value="Item.Price" Label="Ціна" Required="true" Format="N2"/>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="Item.CategoryId" Label="Категорія">
+                    <MudSelectItem T="string" Value="null">Оберіть категорію</MudSelectItem>
+                    @foreach (var category in _categories)
+                    {
+                        <MudSelectItem T="string" Value="@category.Id">@category.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="10">
+                <MudTextField @bind-Value="Item.FactoryId" Label="Заводський номер"/>
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex align-end justify-end">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                               OnClick="@(() => OnRemoved.InvokeAsync(Item))"/>
+            </MudItem>
+        </MudGrid>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public InventoryItem Item { get; set; } = null!;
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public EventCallback<InventoryItem> OnRemoved { get; set; }
+
+    private List<InventoryCategory> _categories = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _categories = await context.Categories.OrderBy(c => c.Name).ToListAsync();
+    }
+}
