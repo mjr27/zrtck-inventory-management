@@ -1,0 +1,180 @@
+@page "/categories"
+@using global::ZRTCK.InventoryManagement.Persistence
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@rendermode InteractiveAuto
+
+<PageTitle>Категорії</PageTitle>
+<MudBreadcrumbs Items="_breadcrumbItems"/>
+
+<div class="d-flex mb-4">
+    <MudText Typo="Typo.h4">Категорії майна</MudText>
+    <MudSpacer/>
+    <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+            OnClick="@(HandleAddCategory)">
+        Додати категорію
+    </MudFab>
+</div>
+
+<MudTable Items="@_categories" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading"
+          LoadingProgressColor="Color.Info">
+    <ToolBarContent>
+        <MudText Typo="Typo.h6">Список категорій</MudText>
+        <MudSpacer/>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>ID</MudTh>
+        <MudTh>Назва</MudTh>
+        <MudTh>Дії</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="ID">@context.Id</MudTd>
+        <MudTd DataLabel="Назва">@context.Name</MudTd>
+        <MudTd DataLabel="Дії">
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                           OnClick="@(() => EditCategory(context))"/>
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                           OnClick="@(() => DeleteCategory(context))"/>
+        </MudTd>
+    </RowTemplate>
+    <PagerContent>
+        <MudTablePager/>
+    </PagerContent>
+</MudTable>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_isEditing ? "Редагувати категорію" : "Додати категорію")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudTextField T="string" Label="ID (Код)" @bind-Value="_model.Id" Required="true"
+                          RequiredError="ID обов'язковий" Disabled="@_isEditing" MaxLength="32"/>
+            <MudTextField T="string" Label="Назва категорії" @bind-Value="_model.Name" Required="true"
+                          RequiredError="Назва обов'язкова" MaxLength="100"/>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="Cancel" Class="px-10">Скасувати</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCategory" Class="px-10">Зберегти
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumbItems =
+    [
+        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+        new("Категорії", href: null, disabled: true)
+    ];
+
+    private List<InventoryCategory> _categories = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private bool _formIsValid;
+    private MudForm _form = null!;
+    private bool _isEditing;
+    private InventoryCategory _model = new() { Id = "", Name = "" };
+    
+    private readonly DialogOptions _dialogOptions = new() { FullWidth = true, MaxWidth = MaxWidth.Small };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        _loading = true;
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _categories = await context.Categories.OrderBy(c => c.Name).ToListAsync();
+        _loading = false;
+    }
+
+    private void HandleAddCategory()
+    {
+        _model = new InventoryCategory { Id = "", Name = "" };
+        _isEditing = false;
+        _dialogVisible = true;
+    }
+
+    private void EditCategory(InventoryCategory category)
+    {
+        _model = new InventoryCategory { Id = category.Id, Name = category.Name };
+        _isEditing = true;
+        _dialogVisible = true;
+    }
+
+    private void Cancel()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveCategory()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        
+        if (_isEditing)
+        {
+            var existing = await context.Categories.FindAsync(_model.Id);
+            if (existing != null)
+            {
+                existing.Name = _model.Name;
+                context.Categories.Update(existing);
+                await context.SaveChangesAsync();
+                Snackbar.Add("Категорію оновлено", Severity.Success);
+            }
+        }
+        else
+        {
+            var existing = await context.Categories.FindAsync(_model.Id);
+            if (existing != null)
+            {
+                Snackbar.Add("Категорія з таким ID вже існує", Severity.Error);
+                return;
+            }
+
+            context.Categories.Add(_model);
+            await context.SaveChangesAsync();
+            Snackbar.Add("Категорію додано", Severity.Success);
+        }
+
+        _dialogVisible = false;
+        await LoadCategories();
+    }
+
+    private async Task DeleteCategory(InventoryCategory category)
+    {
+        var result = await DialogService.ShowMessageBoxAsync("Підтвердження", 
+            (MarkupString)$"Ви впевнені, що хочете видалити категорію <b>{category.Name}</b>?", 
+            yesText: "Видалити", cancelText: "Скасувати");
+
+        if (result == true)
+        {
+            await using var context = await DbContextFactory.CreateDbContextAsync();
+            var existing = await context.Categories.FindAsync(category.Id);
+            if (existing != null)
+            {
+                context.Categories.Remove(existing);
+                try
+                {
+                    await context.SaveChangesAsync();
+                    Snackbar.Add("Категорію видалено", Severity.Success);
+                    await LoadCategories();
+                }
+                catch (Exception)
+                {
+                    Snackbar.Add("Неможливо видалити категорію. Можливо, вона використовується.", Severity.Error);
+                }
+            }
+        }
+    }
+}
