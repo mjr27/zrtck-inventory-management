@@ -6,4 +6,5 @@ public class InventoryCategory
     public required string Name { get; set; } = null!;
     
     public List<InventoryItem> Items { get; set; } = [];
+    public List<InventoryCategoryField> Fields { get; set; } = [];
 }

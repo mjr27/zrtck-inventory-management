@@ -1,48 +1,41 @@
 @page "/categories"
-@using global::ZRTCK.InventoryManagement.Persistence
 @using Microsoft.EntityFrameworkCore
 @using ZRTCK.InventoryManagement.Persistence
+@using EnumsNET
 @inject IDbContextFactory<InventoryDbContext> DbContextFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
-@rendermode InteractiveAuto
+@rendermode InteractiveServer
 
-<PageTitle>Категорії</PageTitle>
+<PageTitle>Категорії майна</PageTitle>
+
 <MudBreadcrumbs Items="_breadcrumbItems"/>
 
 <div class="d-flex mb-4">
     <MudText Typo="Typo.h4">Категорії майна</MudText>
     <MudSpacer/>
-    <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-            OnClick="@(HandleAddCategory)">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="@(HandleAddCategory)">
         Додати категорію
-    </MudFab>
+    </MudButton>
 </div>
 
-<MudTable Items="@_categories" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading"
-          LoadingProgressColor="Color.Info">
-    <ToolBarContent>
-        <MudText Typo="Typo.h6">Список категорій</MudText>
-        <MudSpacer/>
-    </ToolBarContent>
+<MudTable Items="@_categories" Hover="true" Loading="@_loading" Elevation="4">
     <HeaderContent>
         <MudTh>ID</MudTh>
         <MudTh>Назва</MudTh>
-        <MudTh>Дії</MudTh>
+        <MudTh>Кількість полів</MudTh>
+        <MudTh Style="width: 120px;">Дії</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="ID">@context.Id</MudTd>
         <MudTd DataLabel="Назва">@context.Name</MudTd>
-        <MudTd DataLabel="Дії">
-            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
-                           OnClick="@(() => EditCategory(context))"/>
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                           OnClick="@(() => DeleteCategory(context))"/>
+        <MudTd DataLabel="Кількість полів">@context.Fields.Count</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditCategory(context))" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteCategory(context))" />
         </MudTd>
     </RowTemplate>
-    <PagerContent>
-        <MudTablePager/>
-    </PagerContent>
 </MudTable>
 
 <MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
@@ -53,35 +46,58 @@
     </TitleContent>
     <DialogContent>
         <MudForm @ref="_form" @bind-IsValid="_formIsValid">
-            <MudTextField T="string" Label="ID (Код)" @bind-Value="_model.Id" Required="true"
-                          RequiredError="ID обов'язковий" Disabled="@_isEditing" MaxLength="32"/>
-            <MudTextField T="string" Label="Назва категорії" @bind-Value="_model.Name" Required="true"
-                          RequiredError="Назва обов'язкова" MaxLength="100"/>
+            <MudTextField T="string" Label="ID категорії" @bind-Value="_model.Id" Required="true" 
+                          Disabled="_isEditing" HelperText="Код категорії (наприклад: PC, PRINTER)" />
+            <MudTextField T="string" Label="Назва" @bind-Value="_model.Name" Required="true" />
+            
+            <MudDivider Class="my-4"/>
+            <div class="d-flex align-center mb-2">
+                <MudText Typo="Typo.h6">Додаткові поля</MudText>
+                <MudSpacer/>
+                <MudButton StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Info" OnClick="AddField">
+                    Додати поле
+                </MudButton>
+            </div>
+
+            @foreach (var field in _model.Fields.OrderBy(f => f.Order))
+            {
+                <MudPaper Class="pa-4 mb-2" Outlined="true" @key="field">
+                    <div class="d-flex gap-2 align-center">
+                        <MudNumericField T="int" @bind-Value="field.Order" Label="Порядок" Style="width: 80px;" />
+                        <MudTextField T="string" @bind-Value="field.Code" Label="Код" Required="true" />
+                        <MudTextField T="string" @bind-Value="field.Name" Label="Назва" Required="true" />
+                        <MudSelect T="InventoryCategoryFieldType" @bind-Value="field.Type" Label="Тип">
+                            @foreach (var type in Enum.GetValues<InventoryCategoryFieldType>())
+                            {
+                                <MudSelectItem Value="type">@type.AsString(EnumFormat.Description)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveField(field))" />
+                    </div>
+                </MudPaper>
+            }
         </MudForm>
     </DialogContent>
     <DialogActions>
-        <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="Cancel" Class="px-10">Скасувати</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCategory" Class="px-10">Зберегти
-        </MudButton>
+        <MudButton OnClick="Cancel">Скасувати</MudButton>
+        <MudButton Color="Color.Primary" OnClick="SaveCategory">Зберегти</MudButton>
     </DialogActions>
 </MudDialog>
 
 @code {
-    private readonly List<BreadcrumbItem> _breadcrumbItems =
-    [
-        new("Головна", href: "/", icon: Icons.Material.Filled.Home),
+    private List<BreadcrumbItem> _breadcrumbItems = [
+        new("Головна", href: "/"),
         new("Категорії", href: null, disabled: true)
     ];
 
-    private List<InventoryCategory> _categories = new();
+    private List<InventoryCategory> _categories = [];
     private bool _loading = true;
     private bool _dialogVisible;
+    private bool _isEditing;
     private bool _formIsValid;
     private MudForm _form = null!;
-    private bool _isEditing;
     private InventoryCategory _model = new() { Id = "", Name = "" };
-    
-    private readonly DialogOptions _dialogOptions = new() { FullWidth = true, MaxWidth = MaxWidth.Small };
+    private DialogOptions _dialogOptions = new() { FullWidth = true, MaxWidth = MaxWidth.Medium };
 
     protected override async Task OnInitializedAsync()
     {
@@ -92,27 +108,55 @@
     {
         _loading = true;
         await using var context = await DbContextFactory.CreateDbContextAsync();
-        _categories = await context.Categories.OrderBy(c => c.Name).ToListAsync();
+        _categories = await context.Categories
+            .Include(c => c.Fields)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
         _loading = false;
     }
 
     private void HandleAddCategory()
     {
-        _model = new InventoryCategory { Id = "", Name = "" };
         _isEditing = false;
+        _model = new() { Id = "", Name = "", Fields = [] };
         _dialogVisible = true;
     }
 
     private void EditCategory(InventoryCategory category)
     {
-        _model = new InventoryCategory { Id = category.Id, Name = category.Name };
         _isEditing = true;
+        // Clone for editing
+        _model = new InventoryCategory 
+        { 
+            Id = category.Id, 
+            Name = category.Name,
+            Fields = category.Fields.Select(f => new InventoryCategoryField 
+            { 
+                Id = f.Id,
+                CategoryId = f.CategoryId,
+                Code = f.Code, 
+                Name = f.Name, 
+                Order = f.Order, 
+                Type = f.Type 
+            }).ToList()
+        };
         _dialogVisible = true;
     }
 
-    private void Cancel()
+    private void AddField()
     {
-        _dialogVisible = false;
+        _model.Fields.Add(new InventoryCategoryField 
+        { 
+            CategoryId = _model.Id, 
+            Code = "", 
+            Name = "", 
+            Order = _model.Fields.Count > 0 ? _model.Fields.Max(f => f.Order) + 1 : 1 
+        });
+    }
+
+    private void RemoveField(InventoryCategoryField field)
+    {
+        _model.Fields.Remove(field);
     }
 
     private async Task SaveCategory()
@@ -122,59 +166,70 @@
 
         await using var context = await DbContextFactory.CreateDbContextAsync();
         
-        if (_isEditing)
+        if (!_isEditing)
         {
-            var existing = await context.Categories.FindAsync(_model.Id);
-            if (existing != null)
-            {
-                existing.Name = _model.Name;
-                context.Categories.Update(existing);
-                await context.SaveChangesAsync();
-                Snackbar.Add("Категорію оновлено", Severity.Success);
-            }
-        }
-        else
-        {
-            var existing = await context.Categories.FindAsync(_model.Id);
-            if (existing != null)
+            var exists = await context.Categories.AnyAsync(c => c.Id == _model.Id);
+            if (exists)
             {
                 Snackbar.Add("Категорія з таким ID вже існує", Severity.Error);
                 return;
             }
-
             context.Categories.Add(_model);
-            await context.SaveChangesAsync();
-            Snackbar.Add("Категорію додано", Severity.Success);
+        }
+        else
+        {
+            var category = await context.Categories
+                .Include(c => c.Fields)
+                .FirstOrDefaultAsync(c => c.Id == _model.Id);
+            
+            if (category == null) return;
+
+            category.Name = _model.Name;
+            
+            // Sync fields
+            context.CategoryFields.RemoveRange(category.Fields);
+            foreach(var field in _model.Fields)
+            {
+                field.Id = 0; // Reset ID for new inserts
+                field.CategoryId = category.Id;
+                category.Fields.Add(field);
+            }
         }
 
+        await context.SaveChangesAsync();
         _dialogVisible = false;
         await LoadCategories();
+        Snackbar.Add("Збережено", Severity.Success);
     }
 
     private async Task DeleteCategory(InventoryCategory category)
     {
-        var result = await DialogService.ShowMessageBoxAsync("Підтвердження", 
-            (MarkupString)$"Ви впевнені, що хочете видалити категорію <b>{category.Name}</b>?", 
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Видалення", 
+            $"Ви впевнені, що хочете видалити категорію '{category.Name}'? Це також видалить всі її поля.",
             yesText: "Видалити", cancelText: "Скасувати");
 
         if (result == true)
         {
             await using var context = await DbContextFactory.CreateDbContextAsync();
-            var existing = await context.Categories.FindAsync(category.Id);
-            if (existing != null)
+            
+            // Check if there are items using this category
+            var hasItems = await context.Inventory.AnyAsync(i => i.CategoryId == category.Id);
+            if (hasItems)
             {
-                context.Categories.Remove(existing);
-                try
-                {
-                    await context.SaveChangesAsync();
-                    Snackbar.Add("Категорію видалено", Severity.Success);
-                    await LoadCategories();
-                }
-                catch (Exception)
-                {
-                    Snackbar.Add("Неможливо видалити категорію. Можливо, вона використовується.", Severity.Error);
-                }
+                Snackbar.Add("Неможливо видалити категорію, яка використовується майном", Severity.Error);
+                return;
             }
+
+            context.Categories.Remove(category);
+            await context.SaveChangesAsync();
+            await LoadCategories();
+            Snackbar.Add("Видалено", Severity.Success);
         }
+    }
+
+    private void Cancel()
+    {
+        _dialogVisible = false;
     }
 }
