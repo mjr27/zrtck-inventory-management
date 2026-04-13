@@ -15,6 +15,7 @@ public class InventoryItem
     public string? CategoryId { get; set; }
     public InventoryCategory? Category { get; set; }
     [StringLength(400)] public string? FactoryId { get; set; }
+    public List<InventoryItemField> Fields { get; set; } = [];
 
     public int InventoryInvoiceId { get; set; }
     public InventoryInvoice InventoryInvoice { get; set; } = null!;

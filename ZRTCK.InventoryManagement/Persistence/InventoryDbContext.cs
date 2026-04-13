@@ -9,6 +9,7 @@ public class InventoryDbContext(DbContextOptions<InventoryDbContext> options) : 
     public DbSet<Person> People { get; set; }
     public DbSet<InventoryCategory> Categories { get; set; }
     public DbSet<InventoryCategoryField> CategoryFields { get; set; }
+    public DbSet<InventoryItemField> ItemFields { get; set; }
     public DbSet<InventoryAssignment> Assignments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

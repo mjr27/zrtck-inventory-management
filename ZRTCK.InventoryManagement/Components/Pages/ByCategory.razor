@@ -1,0 +1,179 @@
+@page "/by-category/{CategoryName}"
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Майно за категорією: @CategoryName</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Категорія: @(_category?.Name ?? CategoryName)</MudText>
+
+@if (_category == null)
+{
+    <MudText>Категорію не знайдено.</MudText>
+}
+else
+{
+    <MudTable Items="_items" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading" LoadingProgressColor="Color.Info" Dense="true">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.Id)">ID</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.Name)">Назва</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.FactoryId ?? string.Empty)">Заводський номер</MudTableSortLabel></MudTh>
+            @foreach (var field in _category.Fields.OrderBy(f => f.Order))
+            {
+                <MudTh>@field.Name</MudTh>
+            }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="ID">@context.Id</MudTd>
+            <MudTd DataLabel="Назва">@context.Name</MudTd>
+            <MudTd DataLabel="Заводський номер">@context.FactoryId</MudTd>
+            @foreach (var field in _category.Fields.OrderBy(f => f.Order))
+            {
+                <MudTd DataLabel="@field.Name">
+                    @RenderField(context, field)
+                </MudTd>
+            }
+        </RowTemplate>
+    </MudTable>
+
+    <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveChanges" 
+            Style="position: fixed; bottom: 16px; right: 16px;" Label="Оновити" />
+}
+
+@code {
+    [Parameter] public string CategoryName { get; set; } = null!;
+
+    private InventoryCategory? _category;
+    private List<InventoryItem> _items = new();
+    private List<InventoryItemField> _itemFields = new();
+    private Dictionary<(string ItemId, int FieldId), string?> _pendingChanges = new();
+    private bool _loading = true;
+    private Dictionary<int, bool> _passwordVisibility = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await LoadData();
+        _loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _category = await context.Categories
+            .Include(c => c.Fields)
+            .FirstOrDefaultAsync(c => c.Id == CategoryName || c.Name == CategoryName);
+
+        if (_category != null)
+        {
+            _items = await context.Inventory
+                .Where(i => i.CategoryId == _category.Id)
+                .OrderBy(i => i.Name)
+                .ToListAsync();
+
+            var itemIds = _items.Select(i => i.Id).ToList();
+            _itemFields = await context.ItemFields
+                .Where(f => itemIds.Contains(f.ItemId))
+                .ToListAsync();
+        }
+    }
+
+    private RenderFragment RenderField(InventoryItem item, InventoryCategoryField field)
+    {
+        var itemField = _itemFields.FirstOrDefault(f => f.ItemId == item.Id && f.CategoryFieldId == field.Id);
+        string? value = _pendingChanges.TryGetValue((item.Id, field.Id), out var pendingValue) 
+            ? pendingValue 
+            : itemField?.Value;
+
+        return __builder =>
+        {
+            switch (field.Type)
+            {
+                case InventoryCategoryFieldType.String:
+                    <MudTextField T="string" Value="@value" ValueChanged="@(v => UpdateLocalField(item.Id, field.Id, v))" Margin="Margin.Dense" />
+                    break;
+                case InventoryCategoryFieldType.Protected:
+                    bool isVisible = _passwordVisibility.GetValueOrDefault(itemField?.Id ?? -field.Id ^ item.Id.GetHashCode());
+                    <MudTextField T="string" Value="@value" ValueChanged="@(v => UpdateLocalField(item.Id, field.Id, v))" 
+                                  InputType="@(isVisible ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End" 
+                                  AdornmentIcon="@(isVisible ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                  OnAdornmentClick="@(() => TogglePasswordVisibility(itemField, item.Id, field.Id))"
+                                  Margin="Margin.Dense" />
+                    break;
+                case InventoryCategoryFieldType.Text:
+                    <MudTextField T="string" Value="@value" ValueChanged="@(v => UpdateLocalField(item.Id, field.Id, v))" Lines="3" Margin="Margin.Dense" />
+                    break;
+            }
+        };
+    }
+
+    private void UpdateLocalField(string itemId, int fieldId, string? value)
+    {
+        _pendingChanges[(itemId, fieldId)] = value;
+    }
+
+    private void TogglePasswordVisibility(InventoryItemField? itemField, string itemId, int fieldId)
+    {
+        int key = itemField?.Id ?? (itemId.GetHashCode() ^ fieldId);
+        _passwordVisibility[key] = !_passwordVisibility.GetValueOrDefault(key);
+    }
+
+    private async Task SaveChanges()
+    {
+        if (!_pendingChanges.Any())
+        {
+            Snackbar.Add("Немає змін для збереження", Severity.Info);
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            await using var context = await DbContextFactory.CreateDbContextAsync();
+            
+            foreach (var change in _pendingChanges)
+            {
+                var itemId = change.Key.ItemId;
+                var fieldId = change.Key.FieldId;
+                var value = change.Value;
+
+                var itemField = await context.ItemFields
+                    .FirstOrDefaultAsync(f => f.ItemId == itemId && f.CategoryFieldId == fieldId);
+
+                if (itemField == null)
+                {
+                    itemField = new InventoryItemField
+                    {
+                        ItemId = itemId,
+                        CategoryFieldId = fieldId,
+                        Value = value
+                    };
+                    context.ItemFields.Add(itemField);
+                }
+                else
+                {
+                    itemField.Value = value;
+                }
+            }
+
+            await context.SaveChangesAsync();
+            
+            // Reload data to ensure UI matches DB state and clear pending changes
+            await LoadData();
+            _pendingChanges.Clear();
+            
+            Snackbar.Add("Зміни збережено", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Помилка при збереженні: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

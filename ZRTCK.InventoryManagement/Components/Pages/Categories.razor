@@ -25,15 +25,18 @@
         <MudTh>ID</MudTh>
         <MudTh>Назва</MudTh>
         <MudTh>Кількість полів</MudTh>
-        <MudTh Style="width: 120px;">Дії</MudTh>
+        <MudTh Style="width: 160px;">Дії</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="ID">@context.Id</MudTd>
         <MudTd DataLabel="Назва">@context.Name</MudTd>
         <MudTd DataLabel="Кількість полів">@context.Fields.Count</MudTd>
-        <MudTd>
-            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditCategory(context))" />
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteCategory(context))" />
+        <MudTd Style="white-space: nowrap">
+            <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+                <MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Info" Title="Переглянути майно" Href="@($"/by-category/{context.Id}")" />
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditCategory(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteCategory(context))" />
+            </MudButtonGroup>
         </MudTd>
     </RowTemplate>
 </MudTable>
