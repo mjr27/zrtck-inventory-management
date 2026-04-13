@@ -33,7 +33,7 @@
         <MudTd DataLabel="Кількість полів">@context.Fields.Count</MudTd>
         <MudTd Style="white-space: nowrap">
             <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
-                <MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Info" Title="Переглянути майно" Href="@($"/by-category/{context.Id}")" />
+                <MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Info" Href="@($"/by-category/{context.Id}")" />
                 <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditCategory(context))" />
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteCategory(context))" />
             </MudButtonGroup>
@@ -164,7 +164,7 @@
 
     private async Task SaveCategory()
     {
-        await _form.Validate();
+        await _form.ValidateAsync();
         if (!_formIsValid) return;
 
         await using var context = await DbContextFactory.CreateDbContextAsync();

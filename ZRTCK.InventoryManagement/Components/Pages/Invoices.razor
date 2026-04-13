@@ -11,10 +11,8 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <MudText Typo="Typo.h4" GutterBottom="true">Накладні</MudText>
         <MudSpacer/>
-        <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   Href="/invoices/add" Class="mb-4">
-            Додати накладну
-        </MudFab>
+        <MudFab  Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                 Href="/invoices/add" Class="mb-4" />
     </div>
 
     @if (_invoices == null)

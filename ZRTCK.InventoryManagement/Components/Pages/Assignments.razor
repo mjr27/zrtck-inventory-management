@@ -13,10 +13,8 @@
 <div class="d-flex">
     <MudText Typo="Typo.h4" GutterBottom="true">Закріплення майна (Накази)</MudText>
     <MudSpacer/>
-    <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-               OnClick="@(HandleNavigateToCreate)" Class="mb-4">
-        Створити наказ
-    </MudFab>
+    <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+            OnClick="@(HandleNavigateToCreate)" Class="mb-4" />
 </div>
 
 <MudTable Items="@_assignments" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading"

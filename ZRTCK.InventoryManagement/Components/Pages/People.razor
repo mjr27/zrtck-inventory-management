@@ -12,10 +12,8 @@
 <div class="d-flex">
     <MudText Typo="Typo.h4" GutterBottom="true">Особовий склад</MudText>
     <MudSpacer/>
-    <MudFab Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-            OnClick="@(HandleAddPerson)" Class="mb-4">
-        Додати особу
-    </MudFab>
+    <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+            OnClick="@(HandleAddPerson)" Class="mb-4" />
 </div>
 
 <MudTable Items="@_people" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading"
@@ -52,7 +50,6 @@
                            OnClick="@(() => EditPerson(context))"/>
             <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                            Disabled="@(_hasAssignments.GetValueOrDefault(context.Id))"
-                           Title="@(_hasAssignments.GetValueOrDefault(context.Id) ? "Неможливо видалити: особа має записи у відомостях" : "Видалити")"
                            OnClick="@(() => DeletePerson(context))"/>
         </MudTd>
     </RowTemplate>

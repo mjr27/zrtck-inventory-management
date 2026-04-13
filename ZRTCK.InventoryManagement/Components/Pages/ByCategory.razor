@@ -39,7 +39,8 @@ else
     </MudTable>
 
     <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveChanges" 
-            Style="position: fixed; bottom: 16px; right: 16px;" Label="Оновити" />
+            Style="position: fixed; bottom: 16px; right: 16px;" Label="Оновити" 
+            Disabled="@(!_pendingChanges.Any())" />
 }
 
 @code {
@@ -48,9 +49,9 @@ else
     private InventoryCategory? _category;
     private List<InventoryItem> _items = new();
     private List<InventoryItemField> _itemFields = new();
-    private Dictionary<(string ItemId, int FieldId), string?> _pendingChanges = new();
+    private readonly Dictionary<(string ItemId, int FieldId), string?> _pendingChanges = new();
     private bool _loading = true;
-    private Dictionary<int, bool> _passwordVisibility = new();
+    private readonly Dictionary<int, bool> _passwordVisibility = new();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -112,7 +113,17 @@ else
 
     private void UpdateLocalField(string itemId, int fieldId, string? value)
     {
-        _pendingChanges[(itemId, fieldId)] = value;
+        var normalizedValue = string.IsNullOrWhiteSpace(value) ? null : value;
+        var originalValue = _itemFields.FirstOrDefault(f => f.ItemId == itemId && f.CategoryFieldId == fieldId)?.Value;
+        
+        if (normalizedValue == originalValue)
+        {
+            _pendingChanges.Remove((itemId, fieldId));
+        }
+        else
+        {
+            _pendingChanges[(itemId, fieldId)] = normalizedValue;
+        }
     }
 
     private void TogglePasswordVisibility(InventoryItemField? itemField, string itemId, int fieldId)
@@ -143,19 +154,29 @@ else
                 var itemField = await context.ItemFields
                     .FirstOrDefaultAsync(f => f.ItemId == itemId && f.CategoryFieldId == fieldId);
 
-                if (itemField == null)
+                if (string.IsNullOrWhiteSpace(value))
                 {
-                    itemField = new InventoryItemField
+                    if (itemField != null)
                     {
-                        ItemId = itemId,
-                        CategoryFieldId = fieldId,
-                        Value = value
-                    };
-                    context.ItemFields.Add(itemField);
+                        context.ItemFields.Remove(itemField);
+                    }
                 }
                 else
                 {
-                    itemField.Value = value;
+                    if (itemField == null)
+                    {
+                        itemField = new InventoryItemField
+                        {
+                            ItemId = itemId,
+                            CategoryFieldId = fieldId,
+                            Value = value
+                        };
+                        context.ItemFields.Add(itemField);
+                    }
+                    else
+                    {
+                        itemField.Value = value;
+                    }
                 }
             }
 

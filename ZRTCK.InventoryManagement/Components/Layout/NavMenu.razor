@@ -1,10 +1,30 @@
-﻿
-<div class="d-flex">
-    <MudNavLink Href="/">Майно</MudNavLink>
+﻿@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbContextFactory
+
+<div class="d-flex align-center">
+    <MudMenu Label="Майно" EndIcon="@Icons.Material.Filled.KeyboardArrowDown" Color="Color.Inherit" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" Dense="true">
+        <MudMenuItem Href="/">Всі</MudMenuItem>
+        <MudDivider />
+        @foreach (var category in _categories)
+        {
+            <MudMenuItem Href="@($"/by-category/{category.Id}")">@category.Name</MudMenuItem>
+        }
+    </MudMenu>
     <MudNavLink Href="/invoices">Накладні</MudNavLink>
     <MudNavLink Href="/people">Особи</MudNavLink>
     <MudNavLink Href="/categories">Категорії</MudNavLink>
     <MudNavLink Href="/assignments">Закріплення</MudNavLink>
 </div>
 <MudSpacer/>
+
+@code {
+    private List<InventoryCategory> _categories = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        _categories = await context.Categories.OrderBy(c => c.Name).ToListAsync();
+    }
+}
 
