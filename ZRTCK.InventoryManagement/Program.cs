@@ -29,15 +29,32 @@ var localizationOptions = new RequestLocalizationOptions()
 app.UseRequestLocalization(localizationOptions);
 
 // Ensure database is created on startup; seed from CSV if it was just created
-using (var scope = app.Services.CreateScope())
+if (args.Length > 0)
 {
-    var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<InventoryDbContext>>();
-    await using var context = await dbContextFactory.CreateDbContextAsync();
-
-    var created = await context.Database.EnsureCreatedAsync();
-    if (created)
+    using (var scope = app.Services.CreateScope())
     {
-        await CsvInventoryLoader.LoadFromCsvAsync(context);
+        var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<InventoryDbContext>>();
+        await using var context = await dbContextFactory.CreateDbContextAsync();
+
+        if (args[0] == "migrate")
+        {
+            Console.WriteLine("Applying migrations...");
+            await context.Database.MigrateAsync();
+            Console.WriteLine("Migrations applied.");
+            return;
+        }
+
+        if (args[0] == "load" && args.Length > 1)
+        {
+            var fileName = args[1];
+            if (!File.Exists(fileName))
+            {
+                Console.WriteLine($"File not found: {fileName}");
+                return;
+            }
+            await CsvInventoryLoader.LoadFromCsvAsync(context, fileName);
+            return;
+        }
     }
 }
 
