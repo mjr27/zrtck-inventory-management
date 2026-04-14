@@ -14,12 +14,9 @@
         <MudTd DataLabel="Назва">@context.Name</MudTd>
         <MudTd DataLabel="Поточний користувач">@GetPersonName(context.Id)</MudTd>
         <MudTd DataLabel="Закріпити за особою">
-            <MudSelect T="int?" Value="@GetSelectedPersonId(context.Id)" ValueChanged="@(val => OnPersonSelected(context.Id, val))" Label="Оберіть особу" Clearable="true" Disabled="@Disabled">
-                @foreach (var person in _people)
-                {
-                    <MudSelectItem T="int?" Value="@person.Id">@($"{person.LastName} {person.FirstName}")</MudSelectItem>
-                }
-            </MudSelect>
+            <PersonSelector Value="@GetSelectedPersonId(context.Id)" 
+                            ValueChanged="@(val => OnPersonSelected(context.Id, val))" 
+                            Disabled="@Disabled" />
         </MudTd>
     </RowTemplate>
 </MudTable>
@@ -30,14 +27,12 @@
     [Parameter] public bool Disabled { get; set; }
 
     private List<InventoryItem> _inventoryItems = new();
-    private List<Person> _people = new();
     private Dictionary<string, string> _currentAssignments = new();
 
     protected override async Task OnInitializedAsync()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
         _inventoryItems = await context.Inventory.ToListAsync();
-        _people = await context.People.Where(p => !p.IsObsolete).ToListAsync();
 
         var assignmentRows = await context.Assignments
             .SelectMany(a => a.AssignmentRows)

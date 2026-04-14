@@ -28,6 +28,7 @@
         <MudTh>Ім'я</MudTh>
         <MudTh>Прізвище</MudTh>
         <MudTh>Статус</MudTh>
+        <MudTh>Тип</MudTh>
         <MudTh>Дії</MudTh>
     </HeaderContent>
     <RowTemplate>
@@ -43,6 +44,16 @@
             else
             {
                 <MudChip T="string" Color="Color.Success" Size="Size.Small">Активний</MudChip>
+            }
+        </MudTd>
+        <MudTd DataLabel="Тип">
+            @if (context.IsPosition)
+            {
+                <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.AssignmentInd">Посада</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Default" Size="Size.Small">Особа</MudChip>
             }
         </MudTd>
         <MudTd DataLabel="Дії">
@@ -66,16 +77,17 @@
     <DialogContent>
         <MudForm @ref="_form" @bind-IsValid="_formIsValid">
             <MudTextField T="string" Label="Посада" @bind-Value="_model.Position" Required="true"
-                          RequiredError="Посада обов'язкова" Disabled="@_isPositionRestricted"/>
+                          RequiredError="Посада обов'язкова" Disabled="@(_isPositionRestricted && !_model.IsPosition)"/>
             <MudTextField T="string" Label="Звання" @bind-Value="_model.Rank" Required="true"
                           RequiredError="Звання обов'язкове"/>
             <MudTextField T="string" Label="Ім'я" @bind-Value="_model.FirstName" Required="true"
-                          RequiredError="Ім'я обов'язкове" Disabled="@_isPositionRestricted"/>
+                          RequiredError="Ім'я обов'язкове" Disabled="@(_isPositionRestricted && !_model.IsPosition)"/>
             <MudTextField T="string" Label="Прізвище" @bind-Value="_model.LastName" Required="true"
-                          RequiredError="Прізвище обов'язкове" Disabled="@_isPositionRestricted"/>
+                          RequiredError="Прізвище обов'язкове" Disabled="@(_isPositionRestricted && !_model.IsPosition)"/>
+            <MudCheckBox @bind-Value="_model.IsPosition" Label="Це посада (не конкретна особа)"/>
             <MudCheckBox @bind-Value="_model.IsObsolete" Label="Застаріла особа (архівна)"/>
         </MudForm>
-        @if (_isPositionRestricted)
+        @if (_isPositionRestricted && !_model.IsPosition)
         {
             <MudAlert Severity="Severity.Info" Class="mt-2">Ця особа має записи у відомостях закріплення, тому можна
                 редагувати тільки звання.
@@ -103,7 +115,7 @@
     private bool _formIsValid;
     private MudForm _form = null!;
     private int _editingPersonId;
-    private Person _model = new() { Rank = "", Position = "", FirstName = "", LastName = "", IsObsolete = false };
+    private Person _model = new() { Rank = "", Position = "", FirstName = "", LastName = "", IsObsolete = false, IsPosition = false };
     private bool _isPositionRestricted;
 
     private Dictionary<int, bool> _hasAssignments = new();
@@ -134,7 +146,7 @@
     private void HandleAddPerson()
     {
         _editingPersonId = 0;
-        _model = new() { Rank = "", Position = "", FirstName = "", LastName = "", IsObsolete = false };
+        _model = new() { Rank = "", Position = "", FirstName = "", LastName = "", IsObsolete = false, IsPosition = false };
         _isPositionRestricted = false;
         _dialogVisible = true;
     }
@@ -142,7 +154,16 @@
     private async Task EditPerson(Person person)
     {
         _editingPersonId = person.Id;
-        _model = new() { Id = person.Id, Rank = person.Rank, Position = person.Position, FirstName = person.FirstName, LastName = person.LastName, IsObsolete = person.IsObsolete };
+        _model = new()
+        {
+            Id = person.Id,
+            Rank = person.Rank,
+            Position = person.Position,
+            FirstName = person.FirstName,
+            LastName = person.LastName,
+            IsObsolete = person.IsObsolete,
+            IsPosition = person.IsPosition
+        };
 
         await using var context = await DbContextFactory.CreateDbContextAsync();
         _isPositionRestricted = await context.Set<InventoryAssignmentRow>().AnyAsync(r => r.PersonId == person.Id);
@@ -167,11 +188,13 @@
             var person = await context.People.FindAsync(_editingPersonId);
             if (person == null) return;
 
-            if (_isPositionRestricted)
+            if (_isPositionRestricted && !person.IsPosition)
             {
-                // Only Rank and IsObsolete can be edited
+                // Only Rank and IsObsolete can be edited, unless it's a position record
                 person.Rank = _model.Rank;
                 person.IsObsolete = _model.IsObsolete;
+                // Field IsPosition should also be editable to allow converting to position
+                person.IsPosition = _model.IsPosition;
             }
             else
             {
@@ -180,6 +203,7 @@
                 person.FirstName = _model.FirstName;
                 person.LastName = _model.LastName;
                 person.IsObsolete = _model.IsObsolete;
+                person.IsPosition = _model.IsPosition;
             }
 
             context.People.Update(person);

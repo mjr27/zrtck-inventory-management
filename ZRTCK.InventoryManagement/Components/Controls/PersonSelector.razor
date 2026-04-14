@@ -1,0 +1,140 @@
+@using Microsoft.EntityFrameworkCore
+@using ZRTCK.InventoryManagement.Persistence
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+
+<MudAutocomplete T="int?"
+                Label="@Label"
+                Value="@Value"
+                ValueChanged="@OnValueChanged"
+                SearchFunc="@SearchPeople"
+                ToStringFunc="@GetPersonDisplay"
+                Clearable="@Clearable"
+                Dense="true"
+                Variant="@Variant"
+                Disabled="@Disabled"
+                Required="@Required"
+                RequiredError="@RequiredError"
+                Class="@Class"
+                ShowProgressIndicator="@(_allPeople == null)"
+                UserAttributes="@(string.IsNullOrEmpty(Style) ? new Dictionary<string, object?>() : new Dictionary<string, object?> { { "style", Style } })">
+    <ItemTemplate>
+        <div class="d-flex align-center">
+            @if (context.HasValue && _peopleMap.TryGetValue(context.Value, out var person))
+            {
+                <MudIcon Icon="@(context == -1 ? Icons.Material.Filled.PersonOff : (person.IsPosition ? Icons.Material.Filled.AssignmentInd : Icons.Material.Filled.Person))" 
+                         Size="Size.Small" Class="mr-2" 
+                         Color="@(context == -1 ? Color.Default : (person.IsObsolete ? Color.Error : Color.Default))"/>
+                <MudText Color="@(context == -1 ? Color.Default : (person.IsObsolete ? Color.Error : Color.Default))">
+                    @GetPersonDisplay(context)
+                </MudText>
+            }
+            else if (context == -1)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.PersonOff" Size="Size.Small" Class="mr-2"/>
+                <MudText>Не призначені</MudText>
+            }
+        </div>
+    </ItemTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Оберіть особу";
+    [Parameter] public bool Clearable { get; set; } = true;
+    [Parameter] public Variant Variant { get; set; } = Variant.Text;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string RequiredError { get; set; } = "Обов'язкове поле";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+    
+    /// <summary>
+    /// If true, only people who currently have assignments will be shown.
+    /// </summary>
+    [Parameter] public bool OnlyWithAssignments { get; set; }
+
+    /// <summary>
+    /// If true, adds a special "Not assigned" option with value -1.
+    /// </summary>
+    [Parameter] public bool AllowSpecialNone { get; set; }
+
+    private List<Person>? _allPeople;
+    private Dictionary<int, Person> _peopleMap = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPeople();
+    }
+
+    private async Task LoadPeople()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.People.AsQueryable();
+
+        if (OnlyWithAssignments)
+        {
+            var peopleWithAssignments = await context.Set<InventoryAssignmentRow>()
+                .Select(r => r.PersonId)
+                .Distinct()
+                .ToListAsync();
+            query = query.Where(p => peopleWithAssignments.Contains(p.Id));
+        }
+
+        _allPeople = await query
+            .OrderBy(p => p.LastName)
+            .ThenBy(p => p.FirstName)
+            .ToListAsync();
+            
+        _peopleMap = _allPeople.ToDictionary(p => p.Id);
+    }
+
+    private Task<IEnumerable<int?>> SearchPeople(string? value, CancellationToken token)
+    {
+        if (_allPeople == null)
+        {
+            return Task.FromResult(Enumerable.Empty<int?>());
+        }
+
+        var result = new List<int?>();
+        if (AllowSpecialNone)
+        {
+            if (string.IsNullOrEmpty(value) || "Не призначені".Contains(value, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(-1);
+            }
+        }
+
+        IEnumerable<int?> peopleResults;
+        if (string.IsNullOrEmpty(value))
+        {
+            peopleResults = _allPeople.Select(p => (int?)p.Id);
+        }
+        else
+        {
+            peopleResults = _allPeople
+                .Where(p => $"{p.LastName} {p.FirstName} {p.Position} {p.Rank}".Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Select(p => (int?)p.Id);
+        }
+        
+        result.AddRange(peopleResults);
+        return Task.FromResult((IEnumerable<int?>)result);
+    }
+
+    private string GetPersonDisplay(int? id)
+    {
+        if (id == null) return string.Empty;
+        if (id == -1) return "Не призначені";
+        
+        if (!_peopleMap.TryGetValue(id.Value, out var person))
+            return string.Empty;
+
+        return $"{person.LastName} {person.FirstName} ({person.Rank})";
+    }
+
+    private async Task OnValueChanged(int? newValue)
+    {
+        Value = newValue;
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

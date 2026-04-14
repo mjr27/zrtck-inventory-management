@@ -31,30 +31,28 @@ app.UseRequestLocalization(localizationOptions);
 // Ensure database is created on startup; seed from CSV if it was just created
 if (args.Length > 0)
 {
-    using (var scope = app.Services.CreateScope())
+    using var scope = app.Services.CreateScope();
+    var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<InventoryDbContext>>();
+    await using var context = await dbContextFactory.CreateDbContextAsync();
+
+    if (args[0] == "migrate")
     {
-        var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<InventoryDbContext>>();
-        await using var context = await dbContextFactory.CreateDbContextAsync();
+        Console.WriteLine("Applying migrations...");
+        await context.Database.MigrateAsync();
+        Console.WriteLine("Migrations applied.");
+        return;
+    }
 
-        if (args[0] == "migrate")
+    if (args[0] == "load" && args.Length > 1)
+    {
+        var fileName = args[1];
+        if (!File.Exists(fileName))
         {
-            Console.WriteLine("Applying migrations...");
-            await context.Database.MigrateAsync();
-            Console.WriteLine("Migrations applied.");
+            Console.WriteLine($"File not found: {fileName}");
             return;
         }
-
-        if (args[0] == "load" && args.Length > 1)
-        {
-            var fileName = args[1];
-            if (!File.Exists(fileName))
-            {
-                Console.WriteLine($"File not found: {fileName}");
-                return;
-            }
-            await CsvInventoryLoader.LoadFromCsvAsync(context, fileName);
-            return;
-        }
+        await CsvInventoryLoader.LoadFromCsvAsync(context, fileName);
+        return;
     }
 }
 

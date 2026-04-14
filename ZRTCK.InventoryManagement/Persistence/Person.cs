@@ -8,6 +8,7 @@ public class Person
     public required string Position { get; set; }
     public required string FirstName { get; set; }
     public required string LastName { get; set; }
+    public bool IsPosition { get; set; }
     public bool IsObsolete { get; set; }
     [Key] public int Id { get; set; }
 }
