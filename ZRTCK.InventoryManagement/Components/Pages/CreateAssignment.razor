@@ -23,7 +23,7 @@
         </MudGrid>
     </MudForm>
 
-    <AssignmentRowsEditor @bind-SelectedPeople="_selectedPeople"/>
+    <AssignmentRowsEditor @bind-PersonAssignments="_personAssignments"/>
 
     <div class="d-flex justify-end mt-4">
         <MudButton OnClick="@(HandleCancel)" Class="mr-2">Скасувати</MudButton>
@@ -33,7 +33,7 @@
 
 @code {
     private readonly InventoryAssignment _model = new();
-    private Dictionary<string, int?> _selectedPeople = new();
+    private List<AssignmentRowsEditor.PersonAssignmentModel> _personAssignments = new();
 
     private readonly List<BreadcrumbItem> _breadcrumbItems =
     [
@@ -63,15 +63,15 @@
             OrderDate = _model.OrderDate
         };
 
-        foreach (var kvp in _selectedPeople)
+        foreach (var personAssignment in _personAssignments)
         {
-            if (kvp.Value.HasValue)
+            foreach (var itemId in personAssignment.InventoryItemIds)
             {
                 assignment.AssignmentRows.Add(new()
                 {
                     InventoryAssignmentId = 0, // Will be set by EF
-                    InventoryItemId = kvp.Key,
-                    PersonId = kvp.Value.Value,
+                    InventoryItemId = itemId,
+                    PersonId = personAssignment.PersonId,
                     InventoryAssignment = assignment
                 });
             }

@@ -44,7 +44,7 @@
             </MudAlert>
         }
 
-        <AssignmentRowsEditor @bind-SelectedPeople="_selectedPeople" Disabled="@(!CanEditRows)"/>
+        <AssignmentRowsEditor @bind-PersonAssignments="_personAssignments" Disabled="@(!CanEditRows)"/>
 
         <div class="d-flex justify-end mt-4">
             <MudButton OnClick="Cancel" Class="mr-2">Скасувати</MudButton>
@@ -60,7 +60,7 @@
     private bool _loading = true;
     private MudForm _form = null!;
     private bool _formIsValid;
-    private Dictionary<string, int?> _selectedPeople = new();
+    private List<AssignmentRowsEditor.PersonAssignmentModel> _personAssignments = new();
 
     private readonly List<BreadcrumbItem> _breadcrumbItems =
     [
@@ -96,7 +96,14 @@
 
         if (_assignment != null)
         {
-            _selectedPeople = _assignment.AssignmentRows.ToDictionary(r => r.InventoryItemId, r => (int?)r.PersonId);
+            _personAssignments = _assignment.AssignmentRows
+                .GroupBy(r => r.PersonId)
+                .Select(g => new AssignmentRowsEditor.PersonAssignmentModel
+                {
+                    PersonId = g.Key,
+                    InventoryItemIds = g.Select(r => r.InventoryItemId).ToList()
+                })
+                .ToList();
         }
 
         _loading = false;
@@ -124,15 +131,15 @@
             assignment.AssignmentRows.Clear();
 
             // Add new rows
-            foreach (var kvp in _selectedPeople)
+            foreach (var personAssignment in _personAssignments)
             {
-                if (kvp.Value.HasValue)
+                foreach (var itemId in personAssignment.InventoryItemIds)
                 {
                     assignment.AssignmentRows.Add(new()
                     {
                         InventoryAssignmentId = assignment.Id,
-                        InventoryItemId = kvp.Key,
-                        PersonId = kvp.Value.Value,
+                        InventoryItemId = itemId,
+                        PersonId = personAssignment.PersonId,
                         InventoryAssignment = assignment
                     });
                 }

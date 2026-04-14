@@ -2,73 +2,140 @@
 @using ZRTCK.InventoryManagement.Persistence
 @inject IDbContextFactory<InventoryDbContext> DbFactory
 
-<MudTable Items="@_inventoryItems" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Class="mt-4">
+<MudTable Items="@PersonAssignments" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Class="mt-4">
     <HeaderContent>
-        <MudTh>Майно (ID)</MudTh>
-        <MudTh>Назва</MudTh>
-        <MudTh>Поточний користувач</MudTh>
-        <MudTh>Закріпити за особою</MudTh>
+        <MudTh>Особа (Посада та ПІБ)</MudTh>
+        <MudTh>Закріплене майно</MudTh>
+        <MudTh Style="width: 50px;"></MudTh>
     </HeaderContent>
     <RowTemplate>
-        <MudTd DataLabel="Майно (ID)">@context.Id</MudTd>
-        <MudTd DataLabel="Назва">@context.Name</MudTd>
-        <MudTd DataLabel="Поточний користувач">@GetPersonName(context.Id)</MudTd>
-        <MudTd DataLabel="Закріпити за особою">
-            <PersonSelector Value="@GetSelectedPersonId(context.Id)" 
-                            ValueChanged="@(val => OnPersonSelected(context.Id, val))" 
-                            Disabled="@Disabled" />
+        <MudTd DataLabel="Особа">
+            <div class="d-flex flex-column">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@GetPersonPosition(context.PersonId)</MudText>
+                <MudText Typo="Typo.body1">@GetPersonName(context.PersonId)</MudText>
+            </div>
+        </MudTd>
+        <MudTd DataLabel="Закріплене майно">
+            <div class="d-flex flex-column gap-2">
+                @foreach (var itemId in context.InventoryItemIds)
+                {
+                    <div class="d-flex align-center justify-space-between mud-alert mud-alert-filled-info pa-1 px-2 rounded">
+                        <MudText Typo="Typo.body2">@GetItemDisplay(itemId)</MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Inherit" 
+                                       OnClick="@(() => RemoveItem(context, itemId))" Disabled="@Disabled" />
+                    </div>
+                }
+                <div class="d-flex align-center mt-1">
+                    <InventoryItemSelector Value="@_newItemId" 
+                                          ValueChanged="@(id => AddItem(context, id))"
+                                          Disabled="@Disabled"
+                                          Label="Додати майно"
+                                          Class="flex-grow-1"
+                                          ExcludeIds="@GetAllSelectedItemIds()" />
+                </div>
+            </div>
+        </MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" 
+                           OnClick="@(() => RemovePersonRow(context))" Disabled="@Disabled" />
         </MudTd>
     </RowTemplate>
+    <FooterContent>
+        <MudTFootRow>
+            <MudTd colspan="3">
+                <div class="d-flex align-center gap-2 pa-2">
+                    <PersonSelector Value="@_newPersonId" 
+                                   ValueChanged="@OnNewPersonSelected" 
+                                   Disabled="@Disabled" 
+                                   Label="Додати особу до списку"
+                                   Class="flex-grow-1" />
+                </div>
+            </MudTd>
+        </MudTFootRow>
+    </FooterContent>
 </MudTable>
 
 @code {
-    [Parameter] public Dictionary<string, int?> SelectedPeople { get; set; } = new();
-    [Parameter] public EventCallback<Dictionary<string, int?>> SelectedPeopleChanged { get; set; }
+    public class PersonAssignmentModel
+    {
+        public int PersonId { get; set; }
+        public List<string> InventoryItemIds { get; set; } = new();
+    }
+
+    [Parameter] public List<PersonAssignmentModel> PersonAssignments { get; set; } = new();
+    [Parameter] public EventCallback<List<PersonAssignmentModel>> PersonAssignmentsChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
 
+    private List<Person> _allPeople = new();
     private List<InventoryItem> _inventoryItems = new();
-    private Dictionary<string, string> _currentAssignments = new();
+    private Dictionary<int, Person> _peopleMap = new();
+    private Dictionary<string, InventoryItem> _itemsMap = new();
+
+    private int? _newPersonId;
+    private string? _newItemId;
 
     protected override async Task OnInitializedAsync()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
+        _allPeople = await context.People.ToListAsync();
         _inventoryItems = await context.Inventory.ToListAsync();
+        
+        _peopleMap = _allPeople.ToDictionary(p => p.Id);
+        _itemsMap = _inventoryItems.ToDictionary(i => i.Id);
+    }
 
-        var assignmentRows = await context.Assignments
-            .SelectMany(a => a.AssignmentRows)
-            .Include(r => r.InventoryAssignment)
-            .Include(r => r.Person)
-            .Where(r => r.InventoryAssignment.OrderDate != null)
-            .OrderByDescending(r => r.InventoryAssignment.OrderDate)
-            .ToListAsync();
+    private string GetPersonName(int personId)
+    {
+        return _peopleMap.TryGetValue(personId, out var p) ? $"{p.LastName} {p.FirstName}" : "Невідомо";
+    }
 
-        _currentAssignments = assignmentRows
-            .GroupBy(r => r.InventoryItemId)
-            .ToDictionary(
-                g => g.Key,
-                g => g.First().Person.LastName + " " + g.First().Person.FirstName
-            );
+    private string GetPersonPosition(int personId)
+    {
+        return _peopleMap.TryGetValue(personId, out var p) ? p.Position : "";
+    }
 
-        // Ensure all inventory items are in the dictionary
-        foreach (var item in _inventoryItems)
+    private string GetItemDisplay(string itemId)
+    {
+        return _itemsMap.TryGetValue(itemId, out var i) ? $"{i.Name} ({i.Id})" : itemId;
+    }
+
+    private IEnumerable<string> GetAllSelectedItemIds()
+    {
+        return PersonAssignments.SelectMany(a => a.InventoryItemIds);
+    }
+
+    private async Task OnNewPersonSelected(int? personId)
+    {
+        if (personId.HasValue && personId.Value != -1)
         {
-            SelectedPeople.TryAdd(item.Id, null);
+            if (PersonAssignments.All(a => a.PersonId != personId.Value))
+            {
+                PersonAssignments.Add(new PersonAssignmentModel { PersonId = personId.Value });
+                await PersonAssignmentsChanged.InvokeAsync(PersonAssignments);
+            }
+            _newPersonId = null;
         }
     }
 
-    private string GetPersonName(string inventoryItemId)
+    private async Task AddItem(PersonAssignmentModel model, string? itemId)
     {
-        return _currentAssignments.TryGetValue(inventoryItemId, out var personName) ? personName : "—";
+        if (!string.IsNullOrEmpty(itemId) && !model.InventoryItemIds.Contains(itemId))
+        {
+            model.InventoryItemIds.Add(itemId);
+            await PersonAssignmentsChanged.InvokeAsync(PersonAssignments);
+        }
+        _newItemId = null;
     }
 
-    private int? GetSelectedPersonId(string inventoryItemId)
+    private async Task RemoveItem(PersonAssignmentModel model, string itemId)
     {
-        return SelectedPeople.TryGetValue(inventoryItemId, out var personId) ? personId : null;
+        model.InventoryItemIds.Remove(itemId);
+        await PersonAssignmentsChanged.InvokeAsync(PersonAssignments);
     }
 
-    private async Task OnPersonSelected(string inventoryItemId, int? personId)
+    private async Task RemovePersonRow(PersonAssignmentModel model)
     {
-        SelectedPeople[inventoryItemId] = personId;
-        await SelectedPeopleChanged.InvokeAsync(SelectedPeople);
+        PersonAssignments.Remove(model);
+        await PersonAssignmentsChanged.InvokeAsync(PersonAssignments);
     }
 }
