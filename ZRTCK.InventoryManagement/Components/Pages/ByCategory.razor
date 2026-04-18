@@ -15,7 +15,7 @@
 }
 else
 {
-    <MudTable Items="_items" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading" LoadingProgressColor="Color.Info" Dense="true">
+    <MudTable Items="_items" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading" LoadingProgressColor="Color.Info" Dense="true" Class="mb-16">
         <HeaderContent>
             <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.Id)">ID</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.Name)">Назва</MudTableSortLabel></MudTh>
