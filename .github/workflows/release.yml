@@ -1,0 +1,46 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build for ${{ matrix.runtime }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - runtime: linux-x64
+            artifact_name: ZRTCK-linux-x64
+          - runtime: linux-arm64
+            artifact_name: ZRTCK-linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ZRTCK.InventoryManagement/ZRTCK.InventoryManagement.csproj
+
+      - name: Publish self-contained executable
+        run: |
+          dotnet publish ZRTCK.InventoryManagement/ZRTCK.InventoryManagement.csproj \
+            -c Release \
+            -r ${{ matrix.runtime }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -o ./publish/${{ matrix.runtime }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ./publish/${{ matrix.runtime }}
