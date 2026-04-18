@@ -16,12 +16,12 @@
 
         <MudSpacer/>
         <div class="flex-grow-0">
-            <PersonSelector @bind-Value="_selectedPersonId" 
-                            Label="Користувач" 
-                            OnlyWithAssignments="true"
+            <PersonSelector @bind-Value="_selectedPersonId"
+                            Label="Користувач"
+                            FilterExpression="@(person => person.AssignmentRows.Any())"
                             Class="flex-grow-0"
-                            Style="min-width: 250px;" 
-                            AllowSpecialNone="true" />
+                            Style="min-width: 250px;"
+                            AllowSpecialNone="true"/>
         </div>
         <div class="flex-grow-0">
             <MudSelect @bind-Value="_selectedCategoryId" Class="flex-grow-0" Label="Категорія"

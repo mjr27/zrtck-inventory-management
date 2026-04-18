@@ -19,36 +19,38 @@
             <div class="d-flex flex-column gap-2">
                 @foreach (var itemId in context.InventoryItemIds)
                 {
-                    <div class="d-flex align-center justify-space-between mud-alert mud-alert-filled-info pa-1 px-2 rounded">
+                    <div
+                        class="d-flex align-center justify-space-between mud-alert mud-alert-filled-info pa-1 px-2 rounded">
                         <MudText Typo="Typo.body2">@GetItemDisplay(itemId)</MudText>
-                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Inherit" 
-                                       OnClick="@(() => RemoveItem(context, itemId))" Disabled="@Disabled" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Inherit"
+                                       OnClick="@(() => RemoveItem(context, itemId))" Disabled="@Disabled"/>
                     </div>
                 }
                 <div class="d-flex align-center mt-1">
-                    <InventoryItemSelector Value="@_newItemId" 
-                                          ValueChanged="@(id => AddItem(context, id))"
-                                          Disabled="@Disabled"
-                                          Label="Додати майно"
-                                          Class="flex-grow-1"
-                                          ExcludeIds="@GetAllSelectedItemIds()" />
+                    <InventoryItemSelector Value="@(_newItemId ?? "")"
+                                           ValueChanged="@(id => AddItem(context, id))"
+                                           Disabled="@Disabled"
+                                           Label="Додати майно"
+                                           Class="flex-grow-1"
+                                           ExcludeIds="@GetAllSelectedItemIds()"/>
                 </div>
             </div>
         </MudTd>
         <MudTd>
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" 
-                           OnClick="@(() => RemovePersonRow(context))" Disabled="@Disabled" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                           OnClick="@(() => RemovePersonRow(context))" Disabled="@Disabled"/>
         </MudTd>
     </RowTemplate>
     <FooterContent>
         <MudTFootRow>
             <MudTd colspan="3">
                 <div class="d-flex align-center gap-2 pa-2">
-                    <PersonSelector Value="@_newPersonId" 
-                                   ValueChanged="@OnNewPersonSelected" 
-                                   Disabled="@Disabled" 
-                                   Label="Додати особу до списку"
-                                   Class="flex-grow-1" />
+                    <PersonSelector Value="@_newPersonId"
+                                    ValueChanged="@OnNewPersonSelected"
+                                    FilterExpression="@(person => !PersonAssignments.Select(it => it.PersonId).Contains(person.Id))"
+                                    Disabled="@Disabled"
+                                    Label="Додати особу до списку"
+                                    Class="flex-grow-1"/>
                 </div>
             </MudTd>
         </MudTFootRow>
@@ -56,6 +58,7 @@
 </MudTable>
 
 @code {
+
     public class PersonAssignmentModel
     {
         public int PersonId { get; set; }
@@ -79,7 +82,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _allPeople = await context.People.ToListAsync();
         _inventoryItems = await context.Inventory.ToListAsync();
-        
+
         _peopleMap = _allPeople.ToDictionary(p => p.Id);
         _itemsMap = _inventoryItems.ToDictionary(i => i.Id);
     }
@@ -113,6 +116,7 @@
                 PersonAssignments.Add(new PersonAssignmentModel { PersonId = personId.Value });
                 await PersonAssignmentsChanged.InvokeAsync(PersonAssignments);
             }
+
             _newPersonId = null;
         }
     }
@@ -124,6 +128,7 @@
             model.InventoryItemIds.Add(itemId);
             await PersonAssignmentsChanged.InvokeAsync(PersonAssignments);
         }
+
         _newItemId = null;
     }
 

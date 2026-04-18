@@ -3,25 +3,29 @@
 @inject IDbContextFactory<InventoryDbContext> DbFactory
 
 <MudAutocomplete T="string"
-                Label="@Label"
-                Value="@Value"
-                ValueChanged="@OnValueChanged"
-                SearchFunc="@SearchItems"
-                ToStringFunc="@GetItemDisplay"
-                Clearable="@Clearable"
-                Dense="true"
-                Variant="@Variant"
-                Disabled="@Disabled"
-                Required="@Required"
-                RequiredError="@RequiredError"
-                Class="@Class"
-                ShowProgressIndicator="@(_allItems == null)"
-                UserAttributes="@(string.IsNullOrEmpty(Style) ? new Dictionary<string, object?>() : new Dictionary<string, object?> { { "style", Style } })">
+                 @ref="_autocomplete"
+                 Label="@Label"
+                 Value="@Value"
+                 ValueChanged="@OnValueChanged"
+                 SearchFunc="@SearchItems"
+                 ToStringFunc="@GetItemDisplay"
+                 Text="@(_text)"
+                 Clearable="true"
+                 CoerceText="true"
+                 ResetValueOnEmptyText="true"
+                 Dense="true"
+                 Variant="@Variant.Text"
+                 Disabled="@Disabled"
+                 Required="@Required"
+                 RequiredError="@RequiredError"
+                 Class="@Class"
+                 ShowProgressIndicator="@(_allItems == null)"
+                 UserAttributes="@(string.IsNullOrEmpty(Style) ? new Dictionary<string, object?>() : new Dictionary<string, object?> { { "style", Style } })">
     <ItemTemplate>
         <div class="d-flex align-center">
-            @if (!string.IsNullOrEmpty(context) && _itemsMap.TryGetValue(context, out var item))
+            @if (!string.IsNullOrEmpty(context) && _itemsMap.ContainsKey(context))
             {
-                <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Small" Class="mr-2" />
+                <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Small" Class="mr-2"/>
                 <MudText>
                     @GetItemDisplay(context)
                 </MudText>
@@ -31,21 +35,21 @@
 </MudAutocomplete>
 
 @code {
-    [Parameter] public string? Value { get; set; }
-    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Label { get; set; } = "Оберіть майно";
-    [Parameter] public bool Clearable { get; set; } = true;
-    [Parameter] public Variant Variant { get; set; } = Variant.Text;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public string RequiredError { get; set; } = "Обов'язкове поле";
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
-    
+
     [Parameter] public IEnumerable<string>? ExcludeIds { get; set; }
 
     private List<InventoryItem>? _allItems;
     private Dictionary<string, InventoryItem> _itemsMap = new();
+    private string? _text;
+    private MudAutocomplete<string> _autocomplete = null!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -58,7 +62,7 @@
         _allItems = await context.Inventory
             .OrderBy(i => i.Name)
             .ToListAsync();
-            
+
         _itemsMap = _allItems.ToDictionary(i => i.Id);
     }
 
@@ -70,7 +74,7 @@
         }
 
         IEnumerable<InventoryItem> query = _allItems;
-        
+
         if (ExcludeIds != null && ExcludeIds.Any())
         {
             query = query.Where(i => !ExcludeIds.Contains(i.Id));
@@ -78,18 +82,18 @@
 
         if (!string.IsNullOrEmpty(value))
         {
-            query = query.Where(i => 
-                i.Name.Contains(value, StringComparison.OrdinalIgnoreCase) || 
+            query = query.Where(i =>
+                i.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
                 i.Id.Contains(value, StringComparison.OrdinalIgnoreCase));
         }
-        
+
         return Task.FromResult(query.Select(i => i.Id));
     }
 
     private string GetItemDisplay(string? id)
     {
         if (string.IsNullOrEmpty(id)) return string.Empty;
-        
+
         if (!_itemsMap.TryGetValue(id, out var item))
             return string.Empty;
 
@@ -98,7 +102,9 @@
 
     private async Task OnValueChanged(string? newValue)
     {
-        Value = newValue;
+        Value = newValue ?? "";
         await ValueChanged.InvokeAsync(Value);
+        await _autocomplete.ClearAsync();
     }
+
 }

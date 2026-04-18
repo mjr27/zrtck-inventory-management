@@ -8,7 +8,7 @@ public class InventoryAssignmentRowConfiguration : IEntityTypeConfiguration<Inve
     public void Configure(EntityTypeBuilder<InventoryAssignmentRow> builder)
     {
         builder.HasOne(row => row.Person)
-            .WithMany()
+            .WithMany(it => it.AssignmentRows)
             .HasForeignKey(row => row.PersonId);
 
         builder.HasOne(row => row.InventoryItem)

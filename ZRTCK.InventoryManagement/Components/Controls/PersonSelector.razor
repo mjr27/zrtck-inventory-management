@@ -1,29 +1,32 @@
+@using System.Linq.Expressions
 @using Microsoft.EntityFrameworkCore
 @using ZRTCK.InventoryManagement.Persistence
 @inject IDbContextFactory<InventoryDbContext> DbFactory
 
 <MudAutocomplete T="int?"
-                Label="@Label"
-                Value="@Value"
-                ValueChanged="@OnValueChanged"
-                SearchFunc="@SearchPeople"
-                ToStringFunc="@GetPersonDisplay"
-                Clearable="@Clearable"
-                Dense="true"
-                Variant="@Variant"
-                Disabled="@Disabled"
-                Required="@Required"
-                RequiredError="@RequiredError"
-                Class="@Class"
-                ShowProgressIndicator="@(_allPeople == null)"
-                UserAttributes="@(string.IsNullOrEmpty(Style) ? new Dictionary<string, object?>() : new Dictionary<string, object?> { { "style", Style } })">
+                 Label="@Label"
+                 Value="@Value"
+                 ValueChanged="@OnValueChanged"
+                 SearchFunc="@SearchPeople"
+                 ToStringFunc="@GetPersonDisplay"
+                 Clearable="true"
+                 Dense="true"
+                 Variant="@Variant"
+                 Disabled="@Disabled"
+                 Required="@Required"
+                 RequiredError="@RequiredError"
+                 ResetValueOnEmptyText="true"
+                 Class="@Class"
+                 ShowProgressIndicator="@(_allPeople == null)"
+                 UserAttributes="@(string.IsNullOrEmpty(Style) ? new Dictionary<string, object?>() : new Dictionary<string, object?> { { "style", Style } })">
     <ItemTemplate>
         <div class="d-flex align-center">
             @if (context.HasValue && _peopleMap.TryGetValue(context.Value, out var person))
             {
-                <MudIcon Icon="@(context == -1 ? Icons.Material.Filled.PersonOff : (person.IsPosition ? Icons.Material.Filled.AssignmentInd : Icons.Material.Filled.Person))" 
-                         Size="Size.Small" Class="mr-2" 
-                         Color="@(context == -1 ? Color.Default : (person.IsObsolete ? Color.Error : Color.Default))"/>
+                <MudIcon
+                    Icon="@(context == -1 ? Icons.Material.Filled.PersonOff : (person.IsPosition ? Icons.Material.Filled.AssignmentInd : Icons.Material.Filled.Person))"
+                    Size="Size.Small" Class="mr-2"
+                    Color="@(context == -1 ? Color.Default : (person.IsObsolete ? Color.Error : Color.Default))"/>
                 <MudText Color="@(context == -1 ? Color.Default : (person.IsObsolete ? Color.Error : Color.Default))">
                     @GetPersonDisplay(context)
                 </MudText>
@@ -41,23 +44,24 @@
     [Parameter] public int? Value { get; set; }
     [Parameter] public EventCallback<int?> ValueChanged { get; set; }
     [Parameter] public string Label { get; set; } = "Оберіть особу";
-    [Parameter] public bool Clearable { get; set; } = true;
     [Parameter] public Variant Variant { get; set; } = Variant.Text;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public string RequiredError { get; set; } = "Обов'язкове поле";
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
-    
+
     /// <summary>
     /// If true, only people who currently have assignments will be shown.
     /// </summary>
-    [Parameter] public bool OnlyWithAssignments { get; set; }
+    [Parameter]
+    public Expression<Func<Person, bool>>? FilterExpression { get; set; }
 
     /// <summary>
     /// If true, adds a special "Not assigned" option with value -1.
     /// </summary>
-    [Parameter] public bool AllowSpecialNone { get; set; }
+    [Parameter]
+    public bool AllowSpecialNone { get; set; }
 
     private List<Person>? _allPeople;
     private Dictionary<int, Person> _peopleMap = new();
@@ -67,25 +71,26 @@
         await LoadPeople();
     }
 
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadPeople();
+    }
+
     private async Task LoadPeople()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
         var query = context.People.AsQueryable();
 
-        if (OnlyWithAssignments)
+        if (FilterExpression != null)
         {
-            var peopleWithAssignments = await context.Set<InventoryAssignmentRow>()
-                .Select(r => r.PersonId)
-                .Distinct()
-                .ToListAsync();
-            query = query.Where(p => peopleWithAssignments.Contains(p.Id));
+            query = query.Where(FilterExpression);
         }
 
         _allPeople = await query
             .OrderBy(p => p.LastName)
             .ThenBy(p => p.FirstName)
             .ToListAsync();
-            
+
         _peopleMap = _allPeople.ToDictionary(p => p.Id);
     }
 
@@ -116,7 +121,7 @@
                 .Where(p => $"{p.LastName} {p.FirstName} {p.Position} {p.Rank}".Contains(value, StringComparison.OrdinalIgnoreCase))
                 .Select(p => (int?)p.Id);
         }
-        
+
         result.AddRange(peopleResults);
         return Task.FromResult((IEnumerable<int?>)result);
     }
@@ -125,7 +130,7 @@
     {
         if (id == null) return string.Empty;
         if (id == -1) return "Не призначені";
-        
+
         if (!_peopleMap.TryGetValue(id.Value, out var person))
             return string.Empty;
 
