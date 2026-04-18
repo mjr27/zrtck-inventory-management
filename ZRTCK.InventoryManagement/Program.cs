@@ -3,6 +3,7 @@ using MudBlazor.Services;
 using ZRTCK.InventoryManagement;
 using ZRTCK.InventoryManagement.Components;
 using ZRTCK.InventoryManagement.Persistence;
+using ZRTCK.InventoryManagement.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,8 @@ builder.Services.AddMudServices();
 builder.Services.AddDbContextFactory<InventoryDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
+
+builder.Services.AddHostedService<DatabaseBackupService>();
 
 var app = builder.Build();
 
