@@ -44,3 +44,34 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: ./publish/${{ matrix.runtime }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Prepare assets for release
+        run: |
+          mkdir ./release-assets
+          # The output from dotnet publish -p:PublishSingleFile=true is usually ZRTCK.InventoryManagement (the project name)
+          # We'll find it in the downloaded artifact directory and copy it with the desired name.
+          
+          find ./artifacts/ZRTCK-linux-x64 -name "ZRTCK.InventoryManagement" -exec cp {} ./release-assets/ZRTCK-linux-x64 \;
+          find ./artifacts/ZRTCK-linux-arm64 -name "ZRTCK.InventoryManagement" -exec cp {} ./release-assets/ZRTCK-linux-arm64 \;
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./release-assets/ZRTCK-linux-x64
+            ./release-assets/ZRTCK-linux-arm64
+          generate_release_notes: true
+          draft: false
+          prerelease: false
