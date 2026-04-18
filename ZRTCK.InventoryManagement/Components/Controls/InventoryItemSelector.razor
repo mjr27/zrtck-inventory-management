@@ -9,7 +9,6 @@
                  ValueChanged="@OnValueChanged"
                  SearchFunc="@SearchItems"
                  ToStringFunc="@GetItemDisplay"
-                 Text="@(_text)"
                  Clearable="true"
                  CoerceText="true"
                  ResetValueOnEmptyText="true"
@@ -48,7 +47,6 @@
 
     private List<InventoryItem>? _allItems;
     private Dictionary<string, InventoryItem> _itemsMap = new();
-    private string? _text;
     private MudAutocomplete<string> _autocomplete = null!;
 
     protected override async Task OnInitializedAsync()
