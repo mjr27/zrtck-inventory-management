@@ -17,10 +17,12 @@
 </div>
 
 <MudTable Items="@_people" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading"
-          LoadingProgressColor="Color.Info">
+          LoadingProgressColor="Color.Info" Filter="new Func<Person, bool>(FilterFunc1)">
     <ToolBarContent>
         <MudText Typo="Typo.h6">Список осіб</MudText>
         <MudSpacer/>
+        <MudTextField @bind-Value="_searchString" Placeholder="Пошук" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
     </ToolBarContent>
     <HeaderContent>
         <MudTh>Звання</MudTh>
@@ -110,6 +112,7 @@
     ];
 
     private List<Person> _people = new();
+    private string _searchString = "";
     private bool _loading = true;
     private bool _dialogVisible;
     private bool _formIsValid;
@@ -242,6 +245,23 @@
     private void Cancel()
     {
         _dialogVisible = false;
+    }
+
+    private bool FilterFunc1(Person person) => FilterFunc(person, _searchString);
+
+    private bool FilterFunc(Person person, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (person.FirstName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (person.LastName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (person.Position.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (person.Rank.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
     }
 
 }
