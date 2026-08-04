@@ -46,7 +46,6 @@
                 <MudTd DataLabel="Інвентарні номери">@string.Join(", ", context.InventoryNumbers)</MudTd>
                 <MudTd DataLabel="Дії">
                     <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Primary"
-                                   Title="Копіювати для звіту"
                                    OnClick="@(() => CopyForReportAsync(context.ReportLine))" />
                 </MudTd>
             </RowTemplate>

@@ -15,33 +15,59 @@
 }
 else
 {
-    <MudTable Items="_items" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@_loading" LoadingProgressColor="Color.Info" Dense="true" Class="mb-16">
-        <HeaderContent>
-            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.Id)">ID</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.Name)">Назва</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x => x.FactoryId ?? string.Empty)">Заводський номер</MudTableSortLabel></MudTh>
+    <MudDataGrid Items="_items.AsQueryable()" Hover="true" Loading="@_loading" Dense="true" Class="mb-16">
+        <Columns>
+            <PropertyColumn Property="x => x.Id" Title="ID" Sortable="true" StickyLeft="true" />
+            <PropertyColumn Property="x => x.Name" Title="Назва" Sortable="true" />
+            <PropertyColumn Property="x => x.FactoryId" Title="Заводський номер" Sortable="true" />
             @foreach (var field in _category.Fields.OrderBy(f => f.Order))
             {
-                <MudTh>@field.Name</MudTh>
+                <TemplateColumn Title="@field.Name">
+                    <CellTemplate>
+                        @GetFieldDisplay(context.Item.Id, field)
+                    </CellTemplate>
+                </TemplateColumn>
             }
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="ID">@context.Id</MudTd>
-            <MudTd DataLabel="Назва">@context.Name</MudTd>
-            <MudTd DataLabel="Заводський номер">@context.FactoryId</MudTd>
-            @foreach (var field in _category.Fields.OrderBy(f => f.Order))
-            {
-                <MudTd DataLabel="@field.Name">
-                    @RenderField(context, field)
-                </MudTd>
-            }
-        </RowTemplate>
-    </MudTable>
+            <TemplateColumn Title="Дії" Sortable="false">
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                                   OnClick="@(() => OpenEditForm(context.Item))" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
 
     <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveChanges" 
             Style="position: fixed; bottom: 16px; right: 16px;" Label="Оновити" 
             Disabled="@(!_pendingChanges.Any())" />
 }
+
+<MudDialog @bind-Visible="_editDialogVisible" Options="_editDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Редагувати майно</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_editingItem != null && _category != null)
+        {
+            <MudForm @ref="_editForm">
+                <MudTextField T="string" Label="ID" Value="@_editingItem.Id" ReadOnly="true" />
+                <MudTextField T="string" Label="Назва" Value="@_editingItem.Name" ReadOnly="true" />
+                <MudTextField T="string" Label="Заводський номер" Value="@_editingItem.FactoryId" ReadOnly="true" />
+
+                @foreach (var field in _category.Fields.OrderBy(f => f.Order))
+                {
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle2">@field.Name</MudText>
+                    @RenderField(_editingItem, field)
+                }
+            </MudForm>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseEditForm">Скасувати</MudButton>
+        <MudButton Color="Color.Primary" OnClick="SaveEditForm">Готово</MudButton>
+    </DialogActions>
+</MudDialog>
 
 @code {
     [Parameter] public string CategoryName { get; set; } = null!;
@@ -52,6 +78,10 @@ else
     private readonly Dictionary<(string ItemId, int FieldId), string?> _pendingChanges = new();
     private bool _loading = true;
     private readonly Dictionary<int, bool> _passwordVisibility = new();
+    private bool _editDialogVisible;
+    private InventoryItem? _editingItem;
+    private MudForm _editForm = null!;
+    private readonly DialogOptions _editDialogOptions = new() { FullWidth = true, MaxWidth = MaxWidth.Small };
 
     protected override async Task OnParametersSetAsync()
     {
@@ -109,6 +139,39 @@ else
                     break;
             }
         };
+    }
+
+    private string? GetFieldValue(string itemId, int fieldId)
+    {
+        return _pendingChanges.TryGetValue((itemId, fieldId), out var pendingValue)
+            ? pendingValue
+            : _itemFields.FirstOrDefault(f => f.ItemId == itemId && f.CategoryFieldId == fieldId)?.Value;
+    }
+
+    private string? GetFieldDisplay(string itemId, InventoryCategoryField field)
+    {
+        var value = GetFieldValue(itemId, field.Id);
+        return field.Type == InventoryCategoryFieldType.Protected && !string.IsNullOrEmpty(value)
+            ? "••••••"
+            : value;
+    }
+
+    private void OpenEditForm(InventoryItem item)
+    {
+        _editingItem = item;
+        _editDialogVisible = true;
+    }
+
+    private void CloseEditForm()
+    {
+        _editDialogVisible = false;
+        _editingItem = null;
+    }
+
+    private async Task SaveEditForm()
+    {
+        await _editForm.ValidateAsync();
+        CloseEditForm();
     }
 
     private void UpdateLocalField(string itemId, int fieldId, string? value)
