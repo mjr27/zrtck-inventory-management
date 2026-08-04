@@ -2,6 +2,8 @@
 @using Microsoft.EntityFrameworkCore
 @using ZRTCK.InventoryManagement.Persistence
 @inject IDbContextFactory<InventoryDbContext> DbFactory
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Наказ на закріплення майна</PageTitle>
 <MudBreadcrumbs Items="_breadcrumbItems"/>
@@ -27,20 +29,26 @@
             </MudText>
         </div>
 
-        <MudTable Items="@_assignment.AssignmentRows" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+        <MudTable Items="@_groupedRows" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
                   GroupBy="@_groupDefinition">
             <HeaderContent>
-                <MudTh>Майно (ID)</MudTh>
-                <MudTh>Назва майна</MudTh>
+                <MudTh>Найменування майна</MudTh>
+                <MudTh>Інвентарні номери</MudTh>
+                <MudTh>Дії</MudTh>
             </HeaderContent>
             <GroupHeaderTemplate>
-                <MudTh Class="mud-theme-primary" colspan="2">
-                    @($"{context.GroupName}\u003a\u0020{context.Items.First().Person.LastName}\u0020{context.Items.First().Person.FirstName}\u0020\u0028{context.Items.First().Person.Rank}\u0029")
+                <MudTh Class="mud-theme-primary" colspan="3">
+                    @context.Items.First().RecipientTitle
                 </MudTh>
             </GroupHeaderTemplate>
             <RowTemplate>
-                <MudTd DataLabel="Майно (ID)">@context.InventoryItemId</MudTd>
-                <MudTd DataLabel="Назва майна">@context.InventoryItem.Name</MudTd>
+                <MudTd DataLabel="Найменування майна">@context.ProductDisplay</MudTd>
+                <MudTd DataLabel="Інвентарні номери">@string.Join(", ", context.InventoryNumbers)</MudTd>
+                <MudTd DataLabel="Дії">
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Primary"
+                                   Title="Копіювати для звіту"
+                                   OnClick="@(() => CopyForReportAsync(context.ReportLine))" />
+                </MudTd>
             </RowTemplate>
         </MudTable>
     }
@@ -56,7 +64,7 @@
         new("Деталі наказу", href: null, disabled: true)
     ];
 
-    private readonly TableGroupDefinition<InventoryAssignmentRow> _groupDefinition = new()
+    private readonly TableGroupDefinition<AssignmentItemGroup> _groupDefinition = new()
     {
         GroupName = "Особа",
         Indentation = false,
@@ -64,6 +72,9 @@
         IsInitiallyExpanded = true,
         Selector = (e) => e.PersonId
     };
+
+    private List<AssignmentItemGroup> _groupedRows = new();
+    private AssignmentDetailsClipboardInterop? _clipboard;
 
     protected override async Task OnInitializedAsync()
     {
@@ -74,6 +85,54 @@
             .Include(a => a.AssignmentRows)
             .ThenInclude(r => r.InventoryItem)
             .FirstOrDefaultAsync(a => a.Id == AssignmentId);
+
+        if (_assignment != null)
+        {
+            _groupedRows = _assignment.AssignmentRows
+                .GroupBy(row => new { row.PersonId, row.Person })
+                .SelectMany(personGroup => personGroup
+                    .GroupBy(row => new { row.InventoryItem.ProductCode, row.InventoryItem.Name })
+                    .Select(itemGroup => new AssignmentItemGroup(
+                        personGroup.Key.PersonId,
+                        GetRecipientTitle(personGroup.Key.Person),
+                        itemGroup.Key.ProductCode,
+                        itemGroup.Key.Name,
+                        itemGroup.Select(row => row.InventoryItemId)
+                            .OrderBy(id => id, StringComparer.Ordinal)
+                            .ToList())))
+                .OrderBy(row => row.RecipientTitle, StringComparer.CurrentCulture)
+                .ThenBy(row => row.Name, StringComparer.CurrentCulture)
+                .ThenBy(row => row.ProductCode, StringComparer.CurrentCulture)
+                .ToList();
+        }
+    }
+
+    private static string GetRecipientTitle(Person person) => person.IsPosition
+        ? $"Посада: {person.Position} ({person.Rank} {person.FirstName} {person.LastName.ToUpperInvariant()})"
+        : $"Особа: {person.Rank} {person.FirstName} {person.LastName} ({person.Position})";
+
+    private async Task CopyForReportAsync(string text)
+    {
+        _clipboard ??= new AssignmentDetailsClipboardInterop(JS);
+        await _clipboard.CopyAsync(text);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_clipboard != null)
+            await _clipboard.DisposeAsync();
+    }
+
+    private sealed record AssignmentItemGroup(
+        int PersonId,
+        string RecipientTitle,
+        string ProductCode,
+        string Name,
+        IReadOnlyList<string> InventoryNumbers)
+    {
+        public string ProductDisplay => string.IsNullOrWhiteSpace(ProductCode) ? Name : $"{Name} ({ProductCode})";
+
+        public string ReportLine => $"{ProductDisplay} інв. {(InventoryNumbers.Count == 1 ? "№" : "№№")} {string.Join(", ", InventoryNumbers)}";
     }
 
 }

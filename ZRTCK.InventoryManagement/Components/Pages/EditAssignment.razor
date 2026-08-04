@@ -39,8 +39,8 @@
 
         @if (!CanEditRows)
         {
-            <MudAlert Severity="Severity.Info" Class="mb-2">Редагування закріплень дозволено лише якщо номер та
-                дата наказу порожні.
+            <MudAlert Severity="Severity.Info" Class="mb-2">Редагування закріплень недоступне, оскільки вказано
+                номер наказу.
             </MudAlert>
         }
 
@@ -69,7 +69,7 @@
         new("Редагувати", href: null, disabled: true)
     ];
 
-    private bool CanEditRows => !_assignment?.OrderId.HasValue == true && !_assignment?.OrderDate.HasValue == true;
+    private bool CanEditRows => !_assignment?.OrderId.HasValue == true;
 
     private DateTime? OrderDateWrapper
     {
